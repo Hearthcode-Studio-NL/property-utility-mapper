@@ -1,0 +1,115 @@
+# CLAUDE.md — Context for AI assistants
+
+This file is loaded automatically at the start of every Claude Code session in this repo. Its job is to make you productive in the first minute without the user having to re-explain the project. Keep it short and up to date.
+
+## What this project is
+
+**Property Utility Mapper** — a browser-based web app that helps homeowners (Dutch audience first) document the utility lines on their property: water, gas, electricity, sewage, internet, irrigation, garden lighting, drainage.
+
+The user can:
+
+- Create a property by address (geocoded).
+- Draw utility lines on a 2D map, or capture them by walking with phone GPS.
+- Attach attributes (type, depth, material, diameter, install date, notes, photos) to each line.
+- Export the result as PDF / PNG / GeoJSON to send to a contractor.
+
+It is a single-user, local-first SPA. No backend, no accounts, no sync. All data lives in the browser's IndexedDB.
+
+See `SPEC.md` for the full product brief and `ARCHITECTURE.md` for the technical design.
+
+## Tech stack (non-negotiable for v1)
+
+- **Vite** + **React 18** + **TypeScript (strict)**.
+- **Tailwind CSS** for all styling.
+- **react-router-dom v6**. Two routes: `/` and `/property/:id`.
+- **Leaflet** via **react-leaflet**, with OpenStreetMap raster tiles.
+- **Nominatim** for geocoding addresses.
+- **Dexie.js** for IndexedDB access.
+- **npm** as the package manager.
+
+Do not introduce Redux/Zustand/MobX, Next.js, a backend, or a native-app wrapper (Tauri/Capacitor/Expo) without asking first. See `SPEC.md` "Non-goals" for the full list.
+
+## Status
+
+**Built so far:**
+
+- Documentation (`SPEC.md`, `ARCHITECTURE.md`, `CLAUDE.md`, `README.md`).
+- Phase 0 — Scaffolding: Vite + React + TS + Tailwind + React Router + Leaflet + Dexie wired up.
+- Home page: add property by geocoded address, live list, delete (cascades to lines/photos/KLIC files).
+- Property page: Leaflet + OSM map centered on the property.
+- Phase 1 — Drawing (complete): click-to-draw polylines, save as `UtilityLine`, render on map color-coded by type, click to edit attributes (type, depth, material, diameter, install date, notes), delete line (cascades to photos).
+- Phase 2 — GPS walk capture (complete): `src/hooks/useGpsWalk.ts` wraps `watchPosition` with accuracy (`>30 m` drop) + min-distance (`<1.5 m` skip) filters. `WalkingLayer` renders in-progress track + accuracy circle and auto-pans the map. GPS requires a secure context; README documents the tunneling options.
+- Phase 3 — Photos & KLIC upload: **skipped by user decision**. `Photo` and `KlicFile` tables still exist in the Dexie schema but are unused; `deleteProperty` and `deleteUtilityLine` already cascade to them.
+- Phase 4 — Export (complete): GeoJSON (FeatureCollection with Point for property + LineString per line), PNG (map rasterized via `html-to-image`), PDF (jsPDF with map image + attribute list). Export buttons pinned in `LinesPanel` footer, disabled while drafting. `src/lib/export/` holds the implementation. Export modules are dynamically imported to keep the main bundle lean.
+- Phase 5 — Polish (complete): `vite-plugin-pwa` generates the manifest + service worker, Workbox `CacheFirst` on OSM tile URLs (cap 2 000 entries, 30-day TTL) and `NetworkFirst` on Nominatim. `useInstallPrompt` captures `beforeinstallprompt` and exposes an "App installeren" button on Home when the browser supports it. All user-facing copy is Dutch (`UTILITY_META` labels, all components, PDF export). Brand name stays English. Empty states are inline SVG cards on Home and in the lines panel. `<html lang="nl">` in index.html.
+- Geometry editing (complete, P1): `mode` union extended to include `'editing'`. `EditableLineLayer` renders draggable `L.divIcon` vertex handles and midpoint ghosts. Drag = move; click midpoint = insert at midpoint (new vertex auto-selected); click vertex = select; "Verwijder punt" removes the selected vertex (disabled ≤ 2 vertices). `editingVerticesRef` mirrors state synchronously so `dragend` reads fresh values. Enter via "Punten bewerken" in the attribute modal. `LinesLayer` takes `hideLineId` to avoid double-rendering the edited line.
+- Measuring tool (complete, P1): `mode` union extended to include `'measuring'` — ephemeral (no Dexie writes). `MeasureLayer` catches map clicks and renders dashed polyline + point markers. Total shown in panel + banner. `src/lib/distance.ts` owns `haversineMeters`, `pathLengthMeters`, `formatMeters` (234 m / 1.23 km); `useGpsWalk` now imports from there instead of a private copy.
+- GeoJSON import (complete, P1): `importGeoJsonFromText` lives in `src/lib/export/geojson.ts` next to `buildGeoJson` — validates with narrow type guards (`isFeatureCollection`, `isLngLat`, `isLineStringCoords`), assigns **new UUIDs** (never overwrites), writes property + lines in one Dexie transaction. Accepts only our own export format (Point with `kind: 'property'` + LineStrings with `kind: 'utility-line'`). UI: "Importeer GeoJSON" button in the add-property card on Home; dynamic import so the code only loads on click. Navigates to the imported property on success.
+- Kadaster cadastral overlay (complete, P0): `CadastreOverlay` wraps react-leaflet `WMSTileLayer` pointed at PDOK BRK (`service.pdok.nl/kadaster/kadastralekaart/wms/v5_0`, layer `KadastraleKaart`, `transparent`, `opacity=0.7`). Toggle checkbox floats top-right of the map; defaults ON. Not persisted across reloads.
+- Testing (complete): Vitest + jsdom + Testing Library + `fake-indexeddb/auto`. Setup in `src/test/setup.ts`, vitest block in `vite.config.ts`, types wired via `tsconfig.app.json`. Current tests: `src/lib/geocode.test.ts`, `src/lib/snap.test.ts`, `src/db/properties.test.ts`, `src/hooks/useLocalStorageBool.test.ts`, `src/components/Legend.test.tsx`, `src/routes/Home.test.tsx`. Scripts: `test`, `test:watch`, `test:ui`, `coverage`.
+- Snap-to-vertex (complete, P1): `src/lib/snap.ts` — pure `findSnapTarget(target, candidates, toPixel, thresholdPx=12)`. DrawingLayer snaps on click; EditableLineLayer snaps on dragend (sets the dragged marker's LatLng to the snap target before persisting). `Property` builds two candidate lists via `useMemo`: drawing uses all saved lines' vertices, editing uses all except the currently-edited line (can't snap to yourself).
+- Legend (complete): `src/components/Legend.tsx` — collapsible `<details>` in LinesPanel above Export. Grid of 8 utility-type color swatches. Closed by default.
+- Persisted Kadaster toggle (complete): `src/hooks/useLocalStorageBool.ts` — reads once at init, writes on change, swallows storage errors. Used for `showCadastre` in Property.
+- Freehand sketch (complete): `Mode` union gets `'sketching'`. `src/components/SketchLayer.tsx` — mousedown/mousemove/mouseup via `useMapEvents`, 4 px pixel-distance throttle during capture; `map.dragging.disable()` + `doubleClickZoom.disable()` while the component is mounted and restored on unmount. Parent owns `sketchPoints` state; SketchLayer is controlled via `onStartStroke` + `onAppendPoint`. Finish/Cancel reuse `finishDraft`/`cancelDraft` — the saved record is an ordinary `UtilityLine`.
+- Douglas-Peucker simplification (complete): `src/lib/simplify.ts` — `simplifyPath(points, toleranceMeters)` projects lat/lng to planar meters via equirectangular projection around the first point, then runs recursive DP on perpendicular distance. Applied in `Property.finishDraft` only when `mode === 'sketching'` (default tolerance 0.3 m). Click-drawn and GPS-walked vertices are persisted as-is.
+
+**Next up (user-picked — nothing locked in):**
+
+- KLIC WMS integration — P2 in SPEC.md.
+- Duplicate a property — P1.
+- Accept third-party GeoJSON (no `kind` tag) as raw lines — would need a "which property?" dialog.
+
+Update this section as work completes so the next session knows where we are.
+
+## Conventions
+
+- **TypeScript strict mode** is on. No `any` without a `// eslint-disable-next-line` comment that explains why.
+- **IDs are UUID strings** (`crypto.randomUUID()`). Never auto-increment numbers.
+- **Timestamps are ISO 8601 strings** (`new Date().toISOString()`). Parse to `Date` only at the UI boundary.
+- **Types live in `src/types/index.ts`**. Import from there; don't re-declare.
+- **DB access lives in `src/db/*.ts`**. Components should not import `db` directly — they call helper functions.
+- **External API calls live in `src/lib/*.ts`**. One file per service (`geocode.ts`, `klic.ts` later, etc.).
+- **Styling is Tailwind only**. The only CSS file is `src/index.css`, which holds Tailwind directives.
+- **Component file naming**: PascalCase `.tsx` files. One component per file unless they are trivial siblings.
+- **Default map center** is Amsterdam (`52.3676, 4.9041`) when no property coordinates are available.
+
+## Things to avoid
+
+- Do **not** add a state-management library. React state + Dexie's `useLiveQuery` is the pattern.
+- Do **not** add CSS-in-JS or additional CSS files. Tailwind only.
+- Do **not** introduce a backend, auth, or user accounts.
+- Do **not** hit a paid map/geocoding provider. OSM + Nominatim for v1.
+- Do **not** write to `localStorage` — use IndexedDB via Dexie so binary data (photos, KLIC PDFs) fits.
+- Do **not** create `README`s or docs for every subfolder. Three root-level docs are enough.
+- Do **not** silently catch errors. Surface them to the user or log them; failing silently in a tool about underground lines is dangerous.
+
+## User context
+
+- The user is **new to coding**. Explain what you are doing and why, but keep it short. Teach the pattern when it first appears; don't repeat it every time.
+- The user is Dutch (`wijnand@whbbos.nl`). UI copy will eventually be Dutch, but code, comments, and file names stay in English.
+- KLIC is the Dutch underground cable/pipe registry (Kabels en Leidingen Informatie Centrum). v1 treats KLIC files as read-only reference uploads; we do not submit to KLIC.
+
+## Handy commands
+
+```bash
+npm install      # install deps
+npm run dev      # start dev server (Vite, usually localhost:5173)
+npm run build    # production build to dist/
+npm run preview  # serve the production build locally
+npm run typecheck  # tsc -b --noEmit, no code emitted
+npm run lint     # ESLint flat config (react-hooks + TS)
+```
+
+## Linting
+
+ESLint flat config (`eslint.config.js`) with `react-hooks/recommended` + `react-refresh` + TS-ESLint recommended. Key rules enforced as errors: `react-hooks/rules-of-hooks` (catches hooks below early returns — classic bug cause), `react-hooks/set-state-in-effect` (setState in effect bodies — pushes toward derived values or async callback setState). Run `npm run lint` before shipping anything.
+
+## Testing
+
+- Tests live **next to the source** as `*.test.ts` / `*.test.tsx`. No separate `__tests__/` folder.
+- `src/test/setup.ts` imports `fake-indexeddb/auto` (stubs `globalThis.indexedDB` with in-memory IndexedDB) and `@testing-library/jest-dom/vitest` (adds `toBeInTheDocument` and friends).
+- Vitest globals are on — `describe`/`it`/`expect`/`vi` are ambient via `tsconfig.app.json` → `types: ["vitest/globals"]`.
+- **Don't render `Property.tsx` in tests** — pulls in Leaflet which jsdom can't render. Test the ROUTES that lead to it using a `FakeProperty` spy component (pattern in `Home.test.tsx`).
+- DB tests reset all tables in `beforeEach` via a single transaction so abortive runs don't leak state.
+- Mock external modules with `vi.mock('…')`. Reset per-test with `vi.clearAllMocks()` and, for `fetch`, `vi.unstubAllGlobals()`.
+- See `ARCHITECTURE.md` "Testing strategy" for the three-tier breakdown. Playwright / E2E is **not** in v1.
