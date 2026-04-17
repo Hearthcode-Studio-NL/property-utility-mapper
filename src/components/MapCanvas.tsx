@@ -55,6 +55,7 @@ function renderLayer(
         transparent={!opaque}
         opacity={opaque ? 1 : 0.7}
         maxZoom={layer.maxZoom}
+        maxNativeZoom={layer.maxNativeZoom}
         zIndex={zIndex}
         attribution={layer.attribution}
       />

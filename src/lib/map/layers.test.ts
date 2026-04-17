@@ -45,6 +45,31 @@ describe('layer catalogue', () => {
     expect(findLayer('does-not-exist')).toBeUndefined();
   });
 
+  describe('pdok-luchtfoto-hr (PDOK Actueel_orthoHR, 8 cm)', () => {
+    const hr = findLayer('pdok-luchtfoto-hr');
+
+    it('is a base layer alongside the existing 25 cm Satelliet entry', () => {
+      expect(hr).toBeDefined();
+      expect(hr?.kind).toBe('base');
+      // The existing 25 cm layer must stay put — adding HR is additive.
+      expect(findLayer('pdok-luchtfoto')?.kind).toBe('base');
+    });
+
+    it('has a non-empty attribution string', () => {
+      expect(hr?.attribution).toBeTruthy();
+      expect(hr?.attribution.trim().length).toBeGreaterThan(0);
+    });
+
+    it('points at the PDOK Luchtfoto WMS endpoint with wmsLayerName Actueel_orthoHR', () => {
+      expect(hr?.tileUrl).toMatch(/^https:\/\/service\.pdok\.nl\/.+\/wms\//);
+      expect(hr?.wmsLayerName).toBe('Actueel_orthoHR');
+    });
+
+    it('is not defaultOn (OSM remains the default base)', () => {
+      expect(hr?.defaultOn).not.toBe(true);
+    });
+  });
+
   /**
    * Compile-time type assertions.
    *
@@ -58,12 +83,13 @@ describe('layer catalogue', () => {
     it('BaseLayerId is the union of every base-entry id', () => {
       const osm: BaseLayerId = 'osm';
       const luchtfoto: BaseLayerId = 'pdok-luchtfoto';
+      const luchtfotoHr: BaseLayerId = 'pdok-luchtfoto-hr';
       // @ts-expect-error — overlay ids must not be assignable to BaseLayerId
       const kadaster: BaseLayerId = 'kadaster-brk';
       // @ts-expect-error — unknown ids must not be assignable to BaseLayerId
       const bogus: BaseLayerId = 'made-up';
 
-      expect([osm, luchtfoto, kadaster, bogus]).toHaveLength(4);
+      expect([osm, luchtfoto, luchtfotoHr, kadaster, bogus]).toHaveLength(5);
     });
 
     it('OverlayId is the union of every overlay + virtual-overlay id', () => {

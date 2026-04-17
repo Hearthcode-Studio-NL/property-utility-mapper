@@ -40,6 +40,24 @@ export const LAYERS = [
     defaultOn: false,
   },
   {
+    // PDOK Luchtfoto Actueel Ortho HR — 8 cm RGB, nationwide. Same WMS
+    // endpoint as Actueel_ortho25; only the layer name differs. At 8 cm/px
+    // the native raster matches ~zoom 21 in Web Mercator, so we cap tile
+    // requests there and let Leaflet upscale for z=22.
+    // Verified against GetCapabilities (April 2026); layer published under
+    // CC-BY 4.0 by the Beeldmateriaal consortium.
+    id: 'pdok-luchtfoto-hr',
+    kind: 'base',
+    labelNl: 'Satelliet HD',
+    attribution:
+      'Luchtfoto CC-BY <a href="https://www.beeldmateriaal.nl">Beeldmateriaal</a> / <a href="https://www.pdok.nl">PDOK</a>',
+    tileUrl: 'https://service.pdok.nl/hwh/luchtfotorgb/wms/v1_0',
+    wmsLayerName: 'Actueel_orthoHR',
+    maxNativeZoom: 21,
+    maxZoom: 22,
+    defaultOn: false,
+  },
+  {
     // Served as WMS (GetMap), not XYZ. `tileUrl` is the base service URL;
     // `wmsLayerName` tells MapCanvas which layer to request when it
     // builds a `<WMSTileLayer>` for this entry.
