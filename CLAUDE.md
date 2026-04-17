@@ -45,19 +45,36 @@ Do not introduce Redux/Zustand/MobX, Next.js, a backend, or a native-app wrapper
 - Geometry editing (complete, P1): `mode` union extended to include `'editing'`. `EditableLineLayer` renders draggable `L.divIcon` vertex handles and midpoint ghosts. Drag = move; click midpoint = insert at midpoint (new vertex auto-selected); click vertex = select; "Verwijder punt" removes the selected vertex (disabled ≤ 2 vertices). `editingVerticesRef` mirrors state synchronously so `dragend` reads fresh values. Enter via "Punten bewerken" in the attribute modal. `LinesLayer` takes `hideLineId` to avoid double-rendering the edited line.
 - Measuring tool (complete, P1): `mode` union extended to include `'measuring'` — ephemeral (no Dexie writes). `MeasureLayer` catches map clicks and renders dashed polyline + point markers. Total shown in panel + banner. `src/lib/distance.ts` owns `haversineMeters`, `pathLengthMeters`, `formatMeters` (234 m / 1.23 km); `useGpsWalk` now imports from there instead of a private copy.
 - GeoJSON import (complete, P1): `importGeoJsonFromText` lives in `src/lib/export/geojson.ts` next to `buildGeoJson` — validates with narrow type guards (`isFeatureCollection`, `isLngLat`, `isLineStringCoords`), assigns **new UUIDs** (never overwrites), writes property + lines in one Dexie transaction. Accepts only our own export format (Point with `kind: 'property'` + LineStrings with `kind: 'utility-line'`). UI: "Importeer GeoJSON" button in the add-property card on Home; dynamic import so the code only loads on click. Navigates to the imported property on success.
-- Kadaster cadastral overlay (complete, P0): `CadastreOverlay` wraps react-leaflet `WMSTileLayer` pointed at PDOK BRK (`service.pdok.nl/kadaster/kadastralekaart/wms/v5_0`, layer `KadastraleKaart`, `transparent`, `opacity=0.7`). Toggle checkbox floats top-right of the map; defaults ON. Not persisted across reloads.
+- Kadaster cadastral overlay (complete, P0): PDOK BRK WMS (`service.pdok.nl/kadaster/kadastralekaart/wms/v5_0`, layer `KadastraleKaart`, `transparent`, `opacity=0.7`). Originally a dedicated `CadastreOverlay` component with a `Switch` toggle and `useLocalStorageBool('showCadastre')`; **superseded by V2.1 Layer Manager** (see below). Current implementation lives in the `LAYERS` catalogue and is rendered by MapCanvas when present in the selection.
 - Testing (complete): Vitest + jsdom + Testing Library + `fake-indexeddb/auto`. Setup in `src/test/setup.ts`, vitest block in `vite.config.ts`, types wired via `tsconfig.app.json`. Current tests: `src/lib/geocode.test.ts`, `src/lib/snap.test.ts`, `src/db/properties.test.ts`, `src/hooks/useLocalStorageBool.test.ts`, `src/components/Legend.test.tsx`, `src/routes/Home.test.tsx`. Scripts: `test`, `test:watch`, `test:ui`, `coverage`.
 - Snap-to-vertex (complete, P1): `src/lib/snap.ts` — pure `findSnapTarget(target, candidates, toPixel, thresholdPx=12)`. DrawingLayer snaps on click; EditableLineLayer snaps on dragend (sets the dragged marker's LatLng to the snap target before persisting). `Property` builds two candidate lists via `useMemo`: drawing uses all saved lines' vertices, editing uses all except the currently-edited line (can't snap to yourself).
 - Legend (complete): `src/components/Legend.tsx` — collapsible `<details>` in LinesPanel above Export. Grid of 8 utility-type color swatches. Closed by default.
-- Persisted Kadaster toggle (complete): `src/hooks/useLocalStorageBool.ts` — reads once at init, writes on change, swallows storage errors. Used for `showCadastre` in Property.
+- `useLocalStorageBool` hook (`src/hooks/useLocalStorageBool.ts`) still exists with its test but has no active consumer after the V2.1 refactor — its sole user was the `showCadastre` toggle, now superseded by `useLayerSelection`. Kept as a small reusable primitive; delete when we're sure no future setting needs it.
 - Freehand sketch (complete): `Mode` union gets `'sketching'`. `src/components/SketchLayer.tsx` — mousedown/mousemove/mouseup via `useMapEvents`, 4 px pixel-distance throttle during capture; `map.dragging.disable()` + `doubleClickZoom.disable()` while the component is mounted and restored on unmount. Parent owns `sketchPoints` state; SketchLayer is controlled via `onStartStroke` + `onAppendPoint`. Finish/Cancel reuse `finishDraft`/`cancelDraft` — the saved record is an ordinary `UtilityLine`.
 - Douglas-Peucker simplification (complete): `src/lib/simplify.ts` — `simplifyPath(points, toleranceMeters)` projects lat/lng to planar meters via equirectangular projection around the first point, then runs recursive DP on perpendicular distance. Applied in `Property.finishDraft` only when `mode === 'sketching'` (default tolerance 0.3 m). Click-drawn and GPS-walked vertices are persisted as-is.
 
 - Structured-address refactor (complete, SPEC P0 #1 + #2): `Property` is now `{ street, houseNumber, city, postcode?, country?, fullAddress, centerLat, centerLng, ... }`. `src/lib/address.ts` exposes `formatDisplayAddress(parts)` — UI labels use it exclusively; `fullAddress` is reference/export only. `src/lib/geocode.ts` has `geocodeAddress` + `reverseGeocode`, both returning `StructuredAddress` parsed from Nominatim `addressdetails=1`. `AddPropertyPanel` on Home drives two flows (typed or GPS) → editable confirmation card → validated save via `addProperty`, which throws `PropertyValidationError` when street/houseNumber/city/coords are missing. Dexie `version(2)` schema bump with wipe-on-upgrade (pre-v2 records can't be reliably split). GeoJSON export emits structured fields + `displayAddress`; import rejects files without structured fields. PDF/PNG filenames use `formatDisplayAddress`. 55 tests across 9 files; `address.test.ts`, extended `geocode.test.ts` (incl. reverse), refreshed `properties.test.ts` with validation `it.each`, and a new `Home.test.tsx` flow covering type→Zoeken→confirmation→Opslaan→navigate plus the "required field cleared ⇒ Opslaan disabled" path.
 
-**Next candidates on deck:**
+- shadcn/ui + dark mode + branding (complete, SPEC P0 #4): Tailwind + shadcn CSS variable palette via `components.json`, `new-york` style / `slate` base colour. `src/components/ui/` holds 11 hand-authored primitives (button, input, label, card, separator, switch, tabs, dialog, select, dropdown-menu, tooltip, sonner) plus `alert-dialog` added with photos. `src/components/theme-provider.tsx` + `mode-toggle.tsx` follow the shadcn Vite guide; `<ThemeProvider defaultTheme="system" storageKey="pum-theme">` wraps the app in `main.tsx`. `<ModeToggle />` renders top-right of both route headers. Every UI colour is a shadcn CSS-variable class; only data colours (utility type swatches, vertex handles) stay hard-coded. Toasts via `sonner`. `@/*` path alias in `tsconfig.app.json` + `vite.config.ts`. PWA manifest (via `vite-plugin-pwa`) and `index.html` point at the real icons (`favicon.ico`, `favicon-32.png`, `icon-192.png`, `icon-512.png`) with dual theme-color meta tags.
+- Photos (complete, SPEC P0 done): `UtilityLine.photoIds: UUID[]` + `Photo { id, lineId, blob, thumbnailBlob, mimeType, createdAt }`. Dexie bumped to **v3 with a real migration** (no wipe — upgrade adds `photoIds=[]` to existing lines and renames `utilityLineId → lineId` on any prior photos). `src/lib/photos.ts` — `computeResizeTarget` (pure) + `resizeImageToBlob` using `createImageBitmap({imageOrientation:'from-image'})` + Canvas. Full = 1920 px / 0.85 quality; thumbnail = 256 px / 0.7 quality. `src/db/photos.ts` — transactional `addPhoto` / `deletePhoto` / `deletePhotosForLine[Tx]`; cascade wired into `deleteUtilityLine` and `deleteProperty`. UI: `PhotoUploader` (capture=environment on coarse pointers, 10-photo cap with sonner toast) + `PhotoGrid` (thumbnails, shadcn Dialog lightbox with ←/→ nav, shadcn AlertDialog delete). Integrated into `UtilityLineEditor` with a scrollable `DialogContent` so mobile doesn't clip. PDF export appends a "Foto's" section grouped by line using thumbnailBlobs (not full) + captions. GeoJSON adds `photoCount` per utility-line feature — photos never embed. 82 tests / 14 files.
 
-- KLIC WMS integration — P2 in SPEC.md.
+- V2.1 Layer manager (complete): full map-layers refactor so the user can switch between **Kaart** (OSM) and **Satelliet** (PDOK Luchtfoto WMS) base layers, toggle **Kadastrale Kaart** and **Getekende leidingen** overlays, and have the choice persist across reloads. 115 tests / 18 files. Five pieces:
+    - **Catalogue** (`src/lib/map/layers.ts`) — `as const satisfies readonly LayerEntry[]` so each entry keeps literal-typed `id`, and derived unions `BaseLayerId` / `OverlayId` expose to the rest of the app. `LayerEntry` carries `tileUrl`, optional `wmsLayerName`, `maxNativeZoom`, `maxZoom`, `defaultOn`. Types in `src/types/map.ts`. Tests in `src/lib/map/layers.test.ts` include compile-time `@ts-expect-error` assertions that the unions narrow correctly.
+    - **State hook** (`src/hooks/useLayerSelection.tsx`) — **Context-backed**. Every consumer uses the hook; `<LayerSelectionProvider>` at the root of `main.tsx` holds the single state instance. Lazy `useState` initialiser reads `localStorage['pum-layers']` (JSON `{ base, overlays[] }`), validates against the catalogue (unknown ids replaced with defaults, corrupt JSON → defaults, non-object → defaults). `useEffect` persists on change. Setters `setBase` / `toggleOverlay` / `resetToDefaults` are `useCallback([])` so refs are stable.
+    - **Panel** (`src/components/map/LayerManagerPanel.tsx`) — shadcn RadioGroup for bases + Checkbox list for overlays + Separator. Every entry sourced from `LAYERS`; adding a layer there surfaces it in the UI automatically.
+    - **Button** (`src/components/map/LayerManagerButton.tsx`) — responsive wrapper: Popover on desktop, Sheet (bottom) on mobile. Decided by `useIsDesktop(768)`. Trigger is a `PopoverTrigger` / `SheetTrigger` rendered **directly** (no `asChild` + nested Button — that composition failed in the real browser inside the Leaflet container). Styled via `buttonVariants({ variant: 'outline', size: 'icon' })`.
+    - **MapCanvas** (`src/components/MapCanvas.tsx`) — takes `selection: LayerSelection`, renders the active base plus every non-virtual active overlay. Single `renderLayer` helper branches on `wmsLayerName` (WMS vs XYZ/WMTS-REST) and takes an `opaque` flag so base WMS gets `image/jpeg` + `transparent=false` and overlay WMS gets `image/png` + `transparent=true`. Explicit `zIndex` — base = 1, overlays = 10 — so overlays never get buried under a newly-swapped base. Virtual overlays (`user-drawings`) are rendered by the parent (`Property.tsx` gates `<LinesLayer>` on `overlays.has('user-drawings')`).
+    - **New shadcn primitives** added for this work: popover, sheet, radio-group, checkbox. Four new `@radix-ui` deps. Hand-authored in `src/components/ui/` following the existing style.
+    - **Deleted**: `src/components/CadastreOverlay.tsx` (superseded by the catalogue + MapCanvas's WMS branch). Old `showCadastre` state + useLocalStorageBool call in Property.tsx.
+    - Tokens from DESIGN-SYSTEM.md already applied in a prior session (forest-green primary, lighter-green dark, `--radius: 0.625rem`).
+
+### Deferred to v3 / v4
+
+- **KLIC file upload, KLIC parsing, KLIC UI.** The `KlicFile` Dexie table + schema index remain in place as placeholders but nothing writes to them. `deleteProperty` already cascades to `klicFiles` so the table is future-safe. Do not implement or remove — a future session will build on these hooks.
+
+**Earlier candidates still on deck:**
+
+- KLIC WMS overlay (distinct from KLIC file upload above — WMS is a read-only reference layer, not the deferred v3/v4 file import).
 - Duplicate a property — P1.
 - Accept third-party GeoJSON (no `kind` tag) as raw lines — would need a "which property?" dialog.
 
@@ -71,7 +88,10 @@ Update this section as work completes so the next session knows where we are.
 - **Types live in `src/types/index.ts`**. Import from there; don't re-declare.
 - **DB access lives in `src/db/*.ts`**. Components should not import `db` directly — they call helper functions.
 - **External API calls live in `src/lib/*.ts`**. One file per service (`geocode.ts`, `klic.ts` later, etc.).
-- **Styling is Tailwind only**. The only CSS file is `src/index.css`, which holds Tailwind directives.
+- **UI primitives are shadcn/ui first**. Every interactive element (buttons, inputs, cards, dialogs, tabs, forms, switches, toasts, dropdowns, tooltips, etc.) comes from `src/components/ui/`. Before writing a custom component, check whether a shadcn primitive already does it — it almost always does. Add new ones via `npx shadcn@latest add <name>`. Tailwind utilities are fine for layout, spacing, and grid.
+- **Colour discipline for dark mode.** UI chrome colours come exclusively from shadcn CSS variables (`bg-background`, `bg-primary`, `text-foreground`, `text-muted-foreground`, etc.). Do **not** hard-code Tailwind colour classes like `bg-slate-900` / `text-white` / `bg-emerald-600` in UI code — the dark theme won't adapt. The only exceptions are **data-semantic colours**: `UTILITY_META` type colours (water = blue, gas = yellow, etc.), vertex/midpoint handle colours in `index.css`. Those stay fixed across themes on purpose.
+- **Dark mode is live.** `ThemeProvider` wraps the app in `main.tsx` with `defaultTheme="system"` and `storageKey="pum-theme"`. `ModeToggle` is a shadcn `DropdownMenu` in the top-right of the header. Don't read `matchMedia` or poke `<html class>` directly — use `useTheme()` from the provider.
+- **Path alias.** `@/*` maps to `src/*` in both `tsconfig.app.json` and `vite.config.ts`. Shadcn imports use it (`import { Button } from '@/components/ui/button'`). New code prefers `@/` over `../../`.
 - **Component file naming**: PascalCase `.tsx` files. One component per file unless they are trivial siblings.
 - **Default map center** is Amsterdam (`52.3676, 4.9041`) when no property coordinates are available.
 - **Address display** — UI labels for a property ALWAYS go through `formatDisplayAddress(property)` (from `src/lib/address.ts`), which returns `${street} ${houseNumber}, ${city}`. Never render `property.fullAddress` (it's verbose Nominatim output with postcode + province + country — reference-only). Never concatenate raw fields inline outside the helper.
@@ -80,7 +100,9 @@ Update this section as work completes so the next session knows where we are.
 ## Things to avoid
 
 - Do **not** add a state-management library. React state + Dexie's `useLiveQuery` is the pattern.
-- Do **not** add CSS-in-JS or additional CSS files. Tailwind only.
+- Do **not** add CSS-in-JS. Tailwind + shadcn CSS variables.
+- Do **not** add another UI library (MUI, Chakra, Mantine, Ant Design, HeadlessUI). shadcn owns the design system.
+- Do **not** hand-code Tailwind colour classes like `bg-slate-900` in UI chrome — use shadcn CSS-variable classes (`bg-primary`, `bg-background`, etc.) so dark mode works.
 - Do **not** introduce a backend, auth, or user accounts.
 - Do **not** hit a paid map/geocoding provider. OSM + Nominatim for v1.
 - Do **not** write to `localStorage` — use IndexedDB via Dexie so binary data (photos, KLIC PDFs) fits.
@@ -107,6 +129,19 @@ npm run lint     # ESLint flat config (react-hooks + TS)
 ## Linting
 
 ESLint flat config (`eslint.config.js`) with `react-hooks/recommended` + `react-refresh` + TS-ESLint recommended. Key rules enforced as errors: `react-hooks/rules-of-hooks` (catches hooks below early returns — classic bug cause), `react-hooks/set-state-in-effect` (setState in effect bodies — pushes toward derived values or async callback setState). Run `npm run lint` before shipping anything.
+
+## Known console noise
+
+These warnings appear in the browser DevTools but are NOT actionable in
+this codebase. Don't hunt them and don't add a global `console.warn`
+filter — the signal is worth more than the silence.
+
+- **`MouseEvent.mozPressure is deprecated`** and
+  **`MouseEvent.mozInputSource is deprecated`** — Firefox-only. Emitted
+  by Leaflet's DOM-event normalisation code in
+  `node_modules/leaflet/dist/leaflet-src.esm.js` (look for
+  `e.pressure || e.mozPressure`). We're on the latest Leaflet 1.9.4;
+  Leaflet 2.0 is still alpha. Revisit when Leaflet 2 ships stable.
 
 ## Testing
 
