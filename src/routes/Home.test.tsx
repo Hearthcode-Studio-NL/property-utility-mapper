@@ -41,18 +41,25 @@ async function resetDb() {
   );
 }
 
+const STRUCTURED_HIT = {
+  street: 'Herengracht',
+  houseNumber: '1',
+  city: 'Amsterdam',
+  postcode: '1015 BA',
+  country: 'Nederland',
+  fullAddress: 'Herengracht 1, 1015 BA Amsterdam, Noord-Holland, Nederland',
+  lat: 52.3676,
+  lng: 4.9041,
+};
+
 describe('Home', () => {
   beforeEach(async () => {
     await resetDb();
     vi.clearAllMocks();
   });
 
-  it('adds and navigates to a new property after geocoding succeeds', async () => {
-    vi.mocked(geocode.geocodeAddress).mockResolvedValue({
-      lat: 52.3676,
-      lng: 4.9041,
-      displayName: 'Herengracht 1, Amsterdam, Nederland',
-    });
+  it('typed-address flow shows the confirmation card, saves, and navigates', async () => {
+    vi.mocked(geocode.geocodeAddress).mockResolvedValue(STRUCTURED_HIT);
 
     const user = userEvent.setup();
     renderApp();
@@ -61,36 +68,50 @@ describe('Home', () => {
       screen.getByPlaceholderText(/Herengracht 1, Amsterdam/i),
       'Herengracht 1',
     );
-    await user.click(screen.getByRole('button', { name: /Toevoegen/i }));
+    await user.click(screen.getByRole('button', { name: /^Zoeken$/ }));
 
-    // Land on fake property page.
+    // Confirmation card appears with the structured fields pre-filled.
+    const streetInput = await screen.findByDisplayValue('Herengracht');
+    expect(streetInput).toBeInTheDocument();
+    expect(screen.getByDisplayValue('1')).toBeInTheDocument();
+    expect(screen.getByDisplayValue('Amsterdam')).toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: /Opslaan/ }));
+
     const target = await screen.findByTestId('property-page');
     expect(target).toHaveTextContent(/property [0-9a-f-]{36}/);
 
     const stored = await db.properties.toArray();
     expect(stored).toHaveLength(1);
-    expect(stored[0]?.address).toBe('Herengracht 1, Amsterdam, Nederland');
-    expect(geocode.geocodeAddress).toHaveBeenCalledWith('Herengracht 1');
+    expect(stored[0]).toMatchObject({
+      street: 'Herengracht',
+      houseNumber: '1',
+      city: 'Amsterdam',
+      centerLat: 52.3676,
+      centerLng: 4.9041,
+    });
   });
 
-  it('shows saved properties in the list and navigates when one is clicked', async () => {
-    const created = await addProperty({
-      address: 'Keizersgracht 5, Amsterdam',
-      lat: 52.37,
-      lng: 4.88,
-    });
+  it('keeps the user editing when a required field is cleared', async () => {
+    vi.mocked(geocode.geocodeAddress).mockResolvedValue(STRUCTURED_HIT);
 
     const user = userEvent.setup();
     renderApp();
 
-    const link = await screen.findByRole('link', { name: /Keizersgracht 5/i });
-    await user.click(link);
+    await user.type(
+      screen.getByPlaceholderText(/Herengracht 1, Amsterdam/i),
+      'Herengracht 1',
+    );
+    await user.click(screen.getByRole('button', { name: /^Zoeken$/ }));
 
-    const target = await screen.findByTestId('property-page');
-    expect(target).toHaveTextContent(`property ${created.id}`);
+    const street = await screen.findByDisplayValue('Herengracht');
+    await user.clear(street);
+
+    expect(screen.getByRole('button', { name: /Opslaan/ })).toBeDisabled();
+    expect(await db.properties.toArray()).toHaveLength(0);
   });
 
-  it('shows an error when geocoding returns no results', async () => {
+  it('shows a typed-form error when geocoding returns no results', async () => {
     vi.mocked(geocode.geocodeAddress).mockResolvedValue(null);
 
     const user = userEvent.setup();
@@ -100,11 +121,35 @@ describe('Home', () => {
       screen.getByPlaceholderText(/Herengracht 1, Amsterdam/i),
       'nowhere',
     );
-    await user.click(screen.getByRole('button', { name: /Toevoegen/i }));
+    await user.click(screen.getByRole('button', { name: /^Zoeken$/ }));
 
     await waitFor(() => {
       expect(screen.getByText(/Geen resultaten/i)).toBeInTheDocument();
     });
     expect(await db.properties.toArray()).toHaveLength(0);
+  });
+
+  it('lists saved properties using formatDisplayAddress and navigates on click', async () => {
+    const created = await addProperty({
+      street: 'Keizersgracht',
+      houseNumber: '5',
+      city: 'Amsterdam',
+      fullAddress: 'Keizersgracht 5, 1015 CJ Amsterdam, Noord-Holland, Nederland',
+      centerLat: 52.37,
+      centerLng: 4.88,
+    });
+
+    const user = userEvent.setup();
+    renderApp();
+
+    const link = await screen.findByRole('link', { name: /Keizersgracht 5, Amsterdam/i });
+    // Explicitly verify the display rule — no postcode or country in the label.
+    expect(link.textContent).not.toMatch(/1015/);
+    expect(link.textContent).not.toMatch(/Nederland/);
+
+    await user.click(link);
+
+    const target = await screen.findByTestId('property-page');
+    expect(target).toHaveTextContent(`property ${created.id}`);
   });
 });

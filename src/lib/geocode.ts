@@ -1,30 +1,84 @@
-export interface GeocodeResult {
+export interface StructuredAddress {
+  street: string;
+  houseNumber: string;
+  city: string;
+  postcode?: string;
+  country?: string;
+  fullAddress: string;
   lat: number;
   lng: number;
-  displayName: string;
 }
 
-const NOMINATIM_URL = 'https://nominatim.openstreetmap.org/search';
+const NOMINATIM_SEARCH = 'https://nominatim.openstreetmap.org/search';
+const NOMINATIM_REVERSE = 'https://nominatim.openstreetmap.org/reverse';
 
-export async function geocodeAddress(address: string): Promise<GeocodeResult | null> {
-  const q = address.trim();
-  if (!q) return null;
+interface NominatimRaw {
+  lat?: string | number;
+  lon?: string | number;
+  display_name?: string;
+  error?: string;
+  address?: {
+    road?: string;
+    pedestrian?: string;
+    path?: string;
+    house_number?: string;
+    city?: string;
+    town?: string;
+    village?: string;
+    hamlet?: string;
+    suburb?: string;
+    postcode?: string;
+    country?: string;
+  };
+}
 
-  const url = `${NOMINATIM_URL}?q=${encodeURIComponent(q)}&format=json&limit=1&addressdetails=0`;
-  const res = await fetch(url, {
-    headers: { Accept: 'application/json' },
-  });
-  if (!res.ok) {
-    throw new Error(`Nominatim error: ${res.status}`);
-  }
+function parseNominatim(raw: NominatimRaw): StructuredAddress | null {
+  if (!raw || raw.error) return null;
+  const lat = typeof raw.lat === 'number' ? raw.lat : Number.parseFloat(raw.lat ?? '');
+  const lng = typeof raw.lon === 'number' ? raw.lon : Number.parseFloat(raw.lon ?? '');
+  if (!Number.isFinite(lat) || !Number.isFinite(lng)) return null;
 
-  const data: Array<{ lat: string; lon: string; display_name: string }> = await res.json();
-  const hit = data[0];
-  if (!hit) return null;
+  const details = raw.address ?? {};
+  const street = details.road || details.pedestrian || details.path || '';
+  const city =
+    details.city || details.town || details.village || details.hamlet || details.suburb || '';
 
   return {
-    lat: Number.parseFloat(hit.lat),
-    lng: Number.parseFloat(hit.lon),
-    displayName: hit.display_name,
+    street,
+    houseNumber: details.house_number ?? '',
+    city,
+    postcode: details.postcode,
+    country: details.country,
+    fullAddress: raw.display_name ?? '',
+    lat,
+    lng,
   };
+}
+
+export async function geocodeAddress(query: string): Promise<StructuredAddress | null> {
+  const q = query.trim();
+  if (!q) return null;
+
+  const url = `${NOMINATIM_SEARCH}?q=${encodeURIComponent(q)}&format=json&limit=1&addressdetails=1`;
+  const res = await fetch(url, { headers: { Accept: 'application/json' } });
+  if (!res.ok) throw new Error(`Nominatim error: ${res.status}`);
+
+  const data = (await res.json()) as NominatimRaw[];
+  const first = data[0];
+  if (!first) return null;
+  return parseNominatim(first);
+}
+
+export async function reverseGeocode(
+  lat: number,
+  lng: number,
+): Promise<StructuredAddress | null> {
+  if (!Number.isFinite(lat) || !Number.isFinite(lng)) return null;
+
+  const url = `${NOMINATIM_REVERSE}?lat=${lat}&lon=${lng}&format=json&addressdetails=1`;
+  const res = await fetch(url, { headers: { Accept: 'application/json' } });
+  if (!res.ok) throw new Error(`Nominatim error: ${res.status}`);
+
+  const data = (await res.json()) as NominatimRaw;
+  return parseNominatim(data);
 }

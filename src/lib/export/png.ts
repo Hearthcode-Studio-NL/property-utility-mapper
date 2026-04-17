@@ -1,5 +1,6 @@
 import { toBlob, toPng } from 'html-to-image';
 import type { Property } from '../../types';
+import { formatDisplayAddress } from '../address';
 import { exportFilename, triggerDownload } from './download';
 
 const PNG_OPTIONS = {
@@ -20,5 +21,5 @@ export async function renderMapDataUrl(mapEl: HTMLElement): Promise<string> {
 
 export async function exportPng(mapEl: HTMLElement, property: Property): Promise<void> {
   const blob = await renderMapBlob(mapEl);
-  triggerDownload(exportFilename(property.address, 'png'), blob);
+  triggerDownload(exportFilename(formatDisplayAddress(property), 'png'), blob);
 }

@@ -1,4 +1,5 @@
 import type { UtilityLine, UtilityType, UUID } from '../types';
+import { generateId } from '../lib/ids';
 import { db } from './dexie';
 
 export interface NewUtilityLineInput {
@@ -10,7 +11,7 @@ export interface NewUtilityLineInput {
 export async function addUtilityLine(input: NewUtilityLineInput): Promise<UtilityLine> {
   const now = new Date().toISOString();
   const line: UtilityLine = {
-    id: crypto.randomUUID(),
+    id: generateId(),
     propertyId: input.propertyId,
     type: input.type,
     vertices: input.vertices,

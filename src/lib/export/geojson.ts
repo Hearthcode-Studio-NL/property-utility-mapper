@@ -1,6 +1,8 @@
 import type { Property, UtilityLine, UtilityType } from '../../types';
 import { UTILITY_META, UTILITY_TYPES } from '../utilityColors';
 import { db } from '../../db/dexie';
+import { formatDisplayAddress } from '../address';
+import { generateId } from '../ids';
 import { exportFilename, triggerDownload } from './download';
 
 type PointGeometry = { type: 'Point'; coordinates: [number, number] };
@@ -24,11 +26,20 @@ export function buildGeoJson(
   const features: Feature[] = [
     {
       type: 'Feature',
-      geometry: { type: 'Point', coordinates: [property.lng, property.lat] },
+      geometry: {
+        type: 'Point',
+        coordinates: [property.centerLng, property.centerLat],
+      },
       properties: {
         kind: 'property',
         id: property.id,
-        address: property.address,
+        street: property.street,
+        houseNumber: property.houseNumber,
+        city: property.city,
+        postcode: property.postcode,
+        country: property.country,
+        fullAddress: property.fullAddress,
+        displayAddress: formatDisplayAddress(property),
         createdAt: property.createdAt,
         updatedAt: property.updatedAt,
       },
@@ -67,7 +78,7 @@ export function exportGeoJson(property: Property, lines: UtilityLine[]): void {
   const blob = new Blob([JSON.stringify(fc, null, 2)], {
     type: 'application/geo+json',
   });
-  triggerDownload(exportFilename(property.address, 'geojson'), blob);
+  triggerDownload(exportFilename(formatDisplayAddress(property), 'geojson'), blob);
 }
 
 export interface ImportResult {
@@ -102,13 +113,28 @@ export async function importGeoJsonFromText(text: string): Promise<ImportResult>
   }
   const [lng, lat] = propFeature.geometry.coordinates;
 
+  const rawProps = propFeature.properties ?? {};
+  const street = asString(rawProps.street);
+  const houseNumber = asString(rawProps.houseNumber);
+  const city = asString(rawProps.city);
+  if (!street || !houseNumber || !city) {
+    throw new Error(
+      'GeoJSON mist gestructureerde adresvelden (street, houseNumber, city).',
+    );
+  }
+
   const now = new Date().toISOString();
   const property: Property = {
-    id: crypto.randomUUID(),
-    address: asString(propFeature.properties?.address) ?? 'Geïmporteerde locatie',
-    lat,
-    lng,
-    createdAt: asString(propFeature.properties?.createdAt) ?? now,
+    id: generateId(),
+    street,
+    houseNumber,
+    city,
+    postcode: asString(rawProps.postcode),
+    country: asString(rawProps.country),
+    fullAddress: asString(rawProps.fullAddress) ?? `${street} ${houseNumber}, ${city}`,
+    centerLat: lat,
+    centerLng: lng,
+    createdAt: asString(rawProps.createdAt) ?? now,
     updatedAt: now,
   };
 
@@ -122,7 +148,7 @@ export async function importGeoJsonFromText(text: string): Promise<ImportResult>
     const rawCoords = feature.geometry.coordinates;
     if (!isLineStringCoords(rawCoords) || rawCoords.length < 2) continue;
     lines.push({
-      id: crypto.randomUUID(),
+      id: generateId(),
       propertyId: property.id,
       type: normalizeType(feature.properties?.type),
       vertices: rawCoords.map(([ln, lt]) => [lt, ln]),

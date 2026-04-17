@@ -41,13 +41,21 @@ Priority: **P0** = must-have for v1 launch. **P1** = next. **P2** = nice-to-have
 
 **P0**
 
-1. *As a homeowner, I can create a new property by typing an address, so the map centers on my house.*
-2. *As a homeowner, I can toggle a Kadaster cadastral overlay ("Kadastrale Kaart") on top of the base map, so I see my parcel boundaries and can draw utility lines relative to them.* Uses PDOK's BRK WMS service (`https://service.pdok.nl/kadaster/kadastralekaart/wms/v5_0`, layer `KadastraleKaart`).
-3. *As a homeowner, I can upload a KLIC PDF / image as a reference layer under the drawing canvas, so I can trace public utilities from it.* (The KLIC file stays as a reference; we do not extract data from it in v1.)
-4. *As a homeowner, I can draw a utility line on the 2D map by clicking vertices, so I can capture lines I know the route of.*
-5. *As a homeowner on a phone, I can press "Start walking" and have the browser record my GPS track as a new line, so I can capture lines while physically walking them.*
-6. *As a homeowner, I can set attributes on each line: type (water/gas/electricity/sewage/internet/irrigation/garden-lighting/drainage), depth in cm, material, diameter in mm, install date, notes, and attach photos.*
-7. *As a homeowner, I can export the full property map as PDF, PNG, and GeoJSON so I can send it to a contractor.*
+1. *As a homeowner, I can create a new property by typing an address; the app forward-geocodes it via Nominatim and shows a **confirmation card** with street / house number / city fields I can edit before saving.* The backing record stores structured fields + the verbose `fullAddress` for export reference.
+2. *As a homeowner on a phone, I can tap "Use my location"; the browser supplies coordinates, the app **reverse-geocodes** them to a structured address, and the same confirmation card appears pre-filled for me to edit/confirm.* If Geolocation or reverse geocoding fails, I see a clear message and can fall back to typing.
+3. *As a homeowner, I can toggle a Kadaster cadastral overlay ("Kadastrale Kaart") on top of the base map, so I see my parcel boundaries and can draw utility lines relative to them.* Uses PDOK's BRK WMS service (`https://service.pdok.nl/kadaster/kadastralekaart/wms/v5_0`, layer `KadastraleKaart`).
+4. *As a homeowner, I can upload a KLIC PDF / image as a reference layer under the drawing canvas, so I can trace public utilities from it.* (The KLIC file stays as a reference; we do not extract data from it in v1.)
+5. *As a homeowner, I can draw a utility line on the 2D map by clicking vertices, so I can capture lines I know the route of.*
+6. *As a homeowner on a phone, I can press "Start walking" and have the browser record my GPS track as a new line, so I can capture lines while physically walking them.*
+7. *As a homeowner, I can set attributes on each line: type (water/gas/electricity/sewage/internet/irrigation/garden-lighting/drainage), depth in cm, material, diameter in mm, install date, notes, and attach photos.*
+8. *As a homeowner, I can export the full property map as PDF, PNG, and GeoJSON so I can send it to a contractor.*
+
+### Address invariants
+
+Two hard rules derived from stories 1 and 2:
+
+- **Save-validation.** A `Property` is only persisted if `street`, `houseNumber`, and `city` are all non-empty after trim. Bare coordinates without a confirmed address are rejected. The confirmation card is the single gate that enforces this.
+- **Display rule.** Anywhere in the UI (headers, list rows, toolbars, export labels), a property is shown as `${street} ${houseNumber}, ${city}` via the single helper `formatDisplayAddress(property)` — never as `fullAddress` (which is verbose: postcode + province + country) and never by concatenating raw fields inline. `fullAddress` stays in the DB and in the GeoJSON export as reference data only.
 
 **P1**
 

@@ -53,7 +53,9 @@ Do not introduce Redux/Zustand/MobX, Next.js, a backend, or a native-app wrapper
 - Freehand sketch (complete): `Mode` union gets `'sketching'`. `src/components/SketchLayer.tsx` — mousedown/mousemove/mouseup via `useMapEvents`, 4 px pixel-distance throttle during capture; `map.dragging.disable()` + `doubleClickZoom.disable()` while the component is mounted and restored on unmount. Parent owns `sketchPoints` state; SketchLayer is controlled via `onStartStroke` + `onAppendPoint`. Finish/Cancel reuse `finishDraft`/`cancelDraft` — the saved record is an ordinary `UtilityLine`.
 - Douglas-Peucker simplification (complete): `src/lib/simplify.ts` — `simplifyPath(points, toleranceMeters)` projects lat/lng to planar meters via equirectangular projection around the first point, then runs recursive DP on perpendicular distance. Applied in `Property.finishDraft` only when `mode === 'sketching'` (default tolerance 0.3 m). Click-drawn and GPS-walked vertices are persisted as-is.
 
-**Next up (user-picked — nothing locked in):**
+- Structured-address refactor (complete, SPEC P0 #1 + #2): `Property` is now `{ street, houseNumber, city, postcode?, country?, fullAddress, centerLat, centerLng, ... }`. `src/lib/address.ts` exposes `formatDisplayAddress(parts)` — UI labels use it exclusively; `fullAddress` is reference/export only. `src/lib/geocode.ts` has `geocodeAddress` + `reverseGeocode`, both returning `StructuredAddress` parsed from Nominatim `addressdetails=1`. `AddPropertyPanel` on Home drives two flows (typed or GPS) → editable confirmation card → validated save via `addProperty`, which throws `PropertyValidationError` when street/houseNumber/city/coords are missing. Dexie `version(2)` schema bump with wipe-on-upgrade (pre-v2 records can't be reliably split). GeoJSON export emits structured fields + `displayAddress`; import rejects files without structured fields. PDF/PNG filenames use `formatDisplayAddress`. 55 tests across 9 files; `address.test.ts`, extended `geocode.test.ts` (incl. reverse), refreshed `properties.test.ts` with validation `it.each`, and a new `Home.test.tsx` flow covering type→Zoeken→confirmation→Opslaan→navigate plus the "required field cleared ⇒ Opslaan disabled" path.
+
+**Next candidates on deck:**
 
 - KLIC WMS integration — P2 in SPEC.md.
 - Duplicate a property — P1.
@@ -72,6 +74,8 @@ Update this section as work completes so the next session knows where we are.
 - **Styling is Tailwind only**. The only CSS file is `src/index.css`, which holds Tailwind directives.
 - **Component file naming**: PascalCase `.tsx` files. One component per file unless they are trivial siblings.
 - **Default map center** is Amsterdam (`52.3676, 4.9041`) when no property coordinates are available.
+- **Address display** — UI labels for a property ALWAYS go through `formatDisplayAddress(property)` (from `src/lib/address.ts`), which returns `${street} ${houseNumber}, ${city}`. Never render `property.fullAddress` (it's verbose Nominatim output with postcode + province + country — reference-only). Never concatenate raw fields inline outside the helper.
+- **Save validation** — a `Property` is persisted only when `street`, `houseNumber`, and `city` are all non-empty after trim. Bare coordinates without a confirmed address are rejected. Enforced in `addProperty()` in `src/db/properties.ts`.
 
 ## Things to avoid
 

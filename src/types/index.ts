@@ -13,9 +13,17 @@ export type UtilityType =
 
 export interface Property {
   id: UUID;
-  address: string;
-  lat: number;
-  lng: number;
+
+  street: string;
+  houseNumber: string;
+  city: string;
+  postcode?: string;
+  country?: string;
+  fullAddress: string;
+
+  centerLat: number;
+  centerLng: number;
+
   createdAt: ISODate;
   updatedAt: ISODate;
 }

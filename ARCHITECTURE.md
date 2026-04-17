@@ -45,9 +45,20 @@ type UtilityType =
 
 interface Property {
   id: UUID;
-  address: string;          // human-readable, from Nominatim
-  lat: number;
-  lng: number;
+
+  // Structured address. Required fields are enforced at save time by
+  // validateProperty(); see src/db/properties.ts. UI labels ALWAYS go through
+  // formatDisplayAddress(property) — never read these fields directly for
+  // display, and never use fullAddress in user-facing strings.
+  street: string;              // required, trimmed, non-empty
+  houseNumber: string;         // required, string (supports "12A", "1-3")
+  city: string;                // required
+  postcode?: string;
+  country?: string;
+  fullAddress: string;         // verbose Nominatim display_name, reference/export only
+
+  centerLat: number;
+  centerLng: number;
   createdAt: ISODate;
   updatedAt: ISODate;
 }
@@ -112,7 +123,8 @@ src/
 │   ├── properties.ts             # CRUD helpers for Property
 │   └── utilityLines.ts           # CRUD helpers for UtilityLine
 ├── lib/
-│   ├── geocode.ts                # Nominatim wrapper
+│   ├── geocode.ts                # Nominatim forward + reverse
+│   ├── address.ts                # formatDisplayAddress (single source of truth for UI labels)
 │   ├── distance.ts               # Haversine + path length + formatMeters
 │   ├── simplify.ts               # Douglas-Peucker (pure, equirectangular projection)
 │   ├── snap.ts                   # findSnapTarget (pure, takes projector fn)
@@ -128,6 +140,7 @@ src/
 │   └── useLocalStorageBool.ts    # persisted boolean state (Kadaster toggle, etc.)
 ├── components/
 │   ├── MapCanvas.tsx             # Leaflet map wrapper (accepts layer children)
+│   ├── AddPropertyPanel.tsx      # Two-mode entry (typed / GPS) + confirmation card
 │   ├── DrawingLayer.tsx          # Click-to-draw in-progress polyline
 │   ├── WalkingLayer.tsx          # GPS track + current-position + accuracy circle
 │   ├── EditableLineLayer.tsx     # Draggable vertex handles + insert/delete midpoints
@@ -152,22 +165,32 @@ src/
 
 ## Interaction flows
 
-### Create a property
+### Create a property — two flows, one confirmation card
 
-1. User lands on `/`.
-2. Types an address into the form and clicks "Add".
-3. `src/lib/geocode.ts` calls `https://nominatim.openstreetmap.org/search?q=...&format=json&limit=1`.
-4. If a hit: build a `Property`, call `addProperty()` in `src/db/properties.ts` which writes to Dexie.
-5. `useLiveQuery` in `Home.tsx` picks up the change and re-renders the list.
-6. User clicks the new entry → `navigate('/property/:id')`.
+Both flows converge on `AddPropertyPanel`'s **confirmation card** — an editable form with `street`, `houseNumber`, `city`, `postcode`, `country`. Save button is disabled until the three required fields are non-empty. The card is the single gate that enforces the save-validation invariant.
+
+**Flow A — "Enter address" (typed):**
+
+1. User types an address into the text input.
+2. On submit: `geocodeAddress(query)` → Nominatim `/search?q=…&format=json&addressdetails=1&limit=1`.
+3. Parse the returned structured address (`address.road`, `address.house_number`, `address.city || address.town || address.village`, `address.postcode`, `address.country`) + `display_name` → pre-fill confirmation card.
+4. User confirms / edits → `addProperty({...})` writes to Dexie → navigate to `/property/:id`.
+
+**Flow B — "Use my location" (GPS):**
+
+1. User taps the "Use my location" button.
+2. `navigator.geolocation.getCurrentPosition({ enableHighAccuracy: true, timeout: 15000 })` returns a `GeolocationPosition`.
+3. `reverseGeocode(lat, lng)` → Nominatim `/reverse?lat=…&lon=…&format=json&addressdetails=1` → same structured address shape as Flow A.
+4. Pre-fill confirmation card → user confirms / edits → save → navigate.
+5. **Failure modes:** permission denied, timeout, no address found → show a specific error ("Locatie geweigerd", "Geen adres gevonden op deze locatie") and keep the Enter-address tab available as fallback. Do NOT save a property from coordinates alone.
 
 ### View a property
 
 1. Route `/property/:id` mounts `Property.tsx`.
 2. Component reads `id` from `useParams()`.
 3. `useLiveQuery(() => db.properties.get(id))` fetches the record.
-4. Renders `<MapCanvas lat={p.lat} lng={p.lng}>` with layer children.
-5. `MapCanvas` mounts a `<MapContainer>` from react-leaflet with an OSM `<TileLayer>`; layer children render on top.
+4. Header renders `formatDisplayAddress(property)` — e.g. `"Herengracht 1, Amsterdam"`. Coordinates shown separately in small text.
+5. Renders `<MapCanvas lat={p.centerLat} lng={p.centerLng}>` with layer children.
 
 ### Kadaster cadastral overlay
 
@@ -203,6 +226,8 @@ Three-tier plan, no end-to-end in v1.
 ## Open questions
 
 These are decisions we have deferred. When the time comes to answer them, update this section.
+
+- **Migrating pre-refactor local records** — before the structured-address refactor, Property had `address: string` + `lat` + `lng`. Any records in a user's IndexedDB created before the upgrade have the old shape. Options: (a) Dexie `version(2).upgrade(tx)` that splits the old `address` into best-effort structured fields (risky — Nominatim formats vary); (b) wipe the old table on upgrade (dev-stage loss, acceptable with warning); (c) add a `fullAddress`-only fallback display and force re-confirmation on first open. For this session's local dev data, (b) is simplest; we'll decide before any public deploy.
 
 - **Tile caching for offline use** — service worker with Workbox? Manual `caches` API? Skip until PWA phase.
 - **PDF export layout** — A4 portrait with a map thumbnail + attribute table, or a full-bleed map? Decide during Phase 4.

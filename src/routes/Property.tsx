@@ -11,6 +11,7 @@ import {
 } from '../db/utilityLines';
 import type { UtilityLine, UtilityType, UUID } from '../types';
 import { UTILITY_META } from '../lib/utilityColors';
+import { formatDisplayAddress } from '../lib/address';
 import { formatMeters, pathLengthMeters } from '../lib/distance';
 import { simplifyPath } from '../lib/simplify';
 import { useGpsWalk } from '../hooks/useGpsWalk';
@@ -292,16 +293,16 @@ export default function Property() {
           <Link to="/" className="text-sm text-slate-500 hover:underline">
             ← Alle locaties
           </Link>
-          <h1 className="truncate text-lg font-semibold">{property.address}</h1>
+          <h1 className="truncate text-lg font-semibold">{formatDisplayAddress(property)}</h1>
         </div>
         <span className="shrink-0 text-xs text-slate-500">
-          {property.lat.toFixed(5)}, {property.lng.toFixed(5)}
+          {property.centerLat.toFixed(5)}, {property.centerLng.toFixed(5)}
         </span>
       </header>
 
       <div className="flex flex-1 flex-col overflow-hidden md:flex-row">
         <div ref={mapContainerRef} className="relative h-[55vh] md:h-auto md:flex-1">
-          <MapCanvas lat={property.lat} lng={property.lng} showMarker={false}>
+          <MapCanvas lat={property.centerLat} lng={property.centerLng} showMarker={false}>
             {showCadastre && <CadastreOverlay />}
             <LinesLayer
               lines={lines}

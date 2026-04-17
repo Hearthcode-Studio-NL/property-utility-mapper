@@ -1,6 +1,7 @@
 import { jsPDF } from 'jspdf';
 import type { Property, UtilityLine } from '../../types';
 import { UTILITY_META } from '../utilityColors';
+import { formatDisplayAddress } from '../address';
 import { exportFilename } from './download';
 import { renderMapDataUrl } from './png';
 
@@ -31,15 +32,26 @@ export async function exportPdf(
   doc.text('Kaart leidingen perceel', margin, y);
   y += 7;
 
-  doc.setFontSize(10);
-  doc.setFont('helvetica', 'normal');
-  const addressLines = doc.splitTextToSize(property.address, pageWidth - margin * 2);
-  doc.text(addressLines, margin, y);
-  y += addressLines.length * 5 + 1;
+  doc.setFontSize(11);
+  doc.setFont('helvetica', 'bold');
+  doc.text(formatDisplayAddress(property), margin, y);
+  y += 5;
 
+  if (property.fullAddress) {
+    doc.setFontSize(8);
+    doc.setFont('helvetica', 'normal');
+    doc.setTextColor(110);
+    const fullLines = doc.splitTextToSize(property.fullAddress, pageWidth - margin * 2);
+    doc.text(fullLines, margin, y);
+    y += fullLines.length * 4;
+    doc.setTextColor(0);
+  }
+
+  doc.setFontSize(8);
+  doc.setFont('helvetica', 'normal');
   doc.setTextColor(130);
   doc.text(
-    `${property.lat.toFixed(5)}, ${property.lng.toFixed(5)} · Geëxporteerd ${new Date().toLocaleString('nl-NL')}`,
+    `${property.centerLat.toFixed(5)}, ${property.centerLng.toFixed(5)} · Geëxporteerd ${new Date().toLocaleString('nl-NL')}`,
     margin,
     y,
   );
@@ -114,5 +126,5 @@ export async function exportPdf(
     pageHeight - 5,
   );
 
-  doc.save(exportFilename(property.address, 'pdf'));
+  doc.save(exportFilename(formatDisplayAddress(property), 'pdf'));
 }
