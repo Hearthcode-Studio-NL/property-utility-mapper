@@ -1,6 +1,7 @@
 import type { UtilityLine, UtilityType, UUID } from '../types';
 import { generateId } from '../lib/ids';
 import { db } from './dexie';
+import { deletePhotosForLineTx } from './photos';
 
 export interface NewUtilityLineInput {
   propertyId: UUID;
@@ -15,6 +16,7 @@ export async function addUtilityLine(input: NewUtilityLineInput): Promise<Utilit
     propertyId: input.propertyId,
     type: input.type,
     vertices: input.vertices,
+    photoIds: [],
     createdAt: now,
     updatedAt: now,
   };
@@ -36,7 +38,7 @@ export async function updateUtilityLine(id: UUID, patch: UtilityLinePatch): Prom
 
 export async function deleteUtilityLine(id: UUID): Promise<void> {
   await db.transaction('rw', db.utilityLines, db.photos, async () => {
-    await db.photos.where('utilityLineId').equals(id).delete();
+    await deletePhotosForLineTx(id);
     await db.utilityLines.delete(id);
   });
 }

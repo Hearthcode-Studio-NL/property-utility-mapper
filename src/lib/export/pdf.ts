@@ -1,7 +1,8 @@
 import { jsPDF } from 'jspdf';
-import type { Property, UtilityLine } from '../../types';
+import type { Photo, Property, UtilityLine } from '../../types';
 import { UTILITY_META } from '../utilityColors';
 import { formatDisplayAddress } from '../address';
+import { listPhotosForLine } from '../../db/photos';
 import { exportFilename } from './download';
 import { renderMapDataUrl } from './png';
 
@@ -12,6 +13,34 @@ function hexToRgb(hex: string): [number, number, number] {
     parseInt(h.slice(2, 4), 16),
     parseInt(h.slice(4, 6), 16),
   ];
+}
+
+function blobToDataUrl(blob: Blob): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result as string);
+    reader.onerror = () => reject(reader.error ?? new Error('FileReader failed'));
+    reader.readAsDataURL(blob);
+  });
+}
+
+async function getImageDimensions(
+  dataUrl: string,
+): Promise<{ width: number; height: number }> {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.onload = () => resolve({ width: img.naturalWidth, height: img.naturalHeight });
+    img.onerror = () => reject(new Error('Failed to read image dimensions.'));
+    img.src = dataUrl;
+  });
+}
+
+function lineLabel(line: UtilityLine): string {
+  const base = UTILITY_META[line.type].label;
+  const notes = line.notes?.trim();
+  if (!notes) return base;
+  const snippet = notes.length > 60 ? `${notes.slice(0, 60)}…` : notes;
+  return `${base} — ${snippet}`;
 }
 
 export async function exportPdf(
@@ -96,6 +125,8 @@ export async function exportPdf(
       if (line.material) bits.push(line.material);
       if (line.installDate) bits.push(`aangelegd ${line.installDate.slice(0, 10)}`);
       bits.push(`${line.vertices.length} punten`);
+      const photoCount = line.photoIds?.length ?? 0;
+      if (photoCount > 0) bits.push(`${photoCount} foto${photoCount === 1 ? '' : "'s"}`);
 
       doc.setTextColor(90);
       doc.text(bits.join(' · '), margin + 5, y + 4, {
@@ -115,6 +146,82 @@ export async function exportPdf(
         doc.setTextColor(0);
         y += notesLines.length * 4 + 2;
       }
+    }
+  }
+
+  // Photo section — one block per line with photos, thumbnails in a grid.
+  const linesWithPhotos: Array<{ line: UtilityLine; photos: Photo[] }> = [];
+  for (const line of lines) {
+    if ((line.photoIds?.length ?? 0) > 0) {
+      const photos = await listPhotosForLine(line.id);
+      if (photos.length > 0) linesWithPhotos.push({ line, photos });
+    }
+  }
+
+  if (linesWithPhotos.length > 0) {
+    if (y + 10 > pageHeight - margin) {
+      doc.addPage();
+      y = margin;
+    }
+    doc.setFontSize(12);
+    doc.setFont('helvetica', 'bold');
+    doc.text("Foto's", margin, y);
+    y += 6;
+
+    const thumbWidth = 40; // mm
+    const gap = 4;
+    const cols = Math.max(1, Math.floor((pageWidth - margin * 2 + gap) / (thumbWidth + gap)));
+
+    for (const { line, photos } of linesWithPhotos) {
+      if (y + 10 > pageHeight - margin) {
+        doc.addPage();
+        y = margin;
+      }
+      doc.setFontSize(10);
+      doc.setFont('helvetica', 'bold');
+      const label = lineLabel(line);
+      const labelLines = doc.splitTextToSize(label, pageWidth - margin * 2);
+      doc.text(labelLines, margin, y);
+      y += labelLines.length * 4 + 2;
+
+      doc.setFontSize(8);
+      doc.setFont('helvetica', 'normal');
+
+      let col = 0;
+      let rowTop = y;
+      let rowMaxBottom = y;
+      for (let i = 0; i < photos.length; i++) {
+        const photo = photos[i];
+        const dataUrl = await blobToDataUrl(photo.thumbnailBlob);
+        const dims = await getImageDimensions(dataUrl);
+        const aspect = dims.height / dims.width || 1;
+        const w = thumbWidth;
+        const h = Math.min(thumbWidth * aspect, 55); // cap height to stay compact
+
+        if (rowTop + h + 6 > pageHeight - margin) {
+          doc.addPage();
+          rowTop = margin;
+          col = 0;
+          rowMaxBottom = rowTop;
+        }
+
+        const x = margin + col * (thumbWidth + gap);
+        doc.addImage(dataUrl, 'JPEG', x, rowTop, w, h);
+
+        doc.setTextColor(120);
+        const caption = `${i + 1}. ${photo.createdAt.slice(0, 10)}`;
+        doc.text(caption, x, rowTop + h + 3.5);
+        doc.setTextColor(0);
+
+        rowMaxBottom = Math.max(rowMaxBottom, rowTop + h + 5);
+        col++;
+        if (col >= cols) {
+          col = 0;
+          rowTop = rowMaxBottom + 2;
+          rowMaxBottom = rowTop;
+        }
+      }
+      y = rowMaxBottom + 4;
     }
   }
 

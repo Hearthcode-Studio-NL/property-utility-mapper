@@ -30,3 +30,6 @@ Thumbs.db
 
 # TypeScript build info
 *.tsbuildinfo
+
+# Claude Code local session data
+.claude/

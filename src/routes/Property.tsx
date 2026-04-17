@@ -12,12 +12,13 @@ import {
 import type { UtilityLine, UtilityType, UUID } from '../types';
 import { UTILITY_META } from '../lib/utilityColors';
 import { formatDisplayAddress } from '../lib/address';
+import { ModeToggle } from '@/components/mode-toggle';
+import LayerManagerButton from '@/components/map/LayerManagerButton';
 import { formatMeters, pathLengthMeters } from '../lib/distance';
 import { simplifyPath } from '../lib/simplify';
 import { useGpsWalk } from '../hooks/useGpsWalk';
-import { useLocalStorageBool } from '../hooks/useLocalStorageBool';
+import { useLayerSelection } from '@/hooks/useLayerSelection';
 import MapCanvas from '../components/MapCanvas';
-import CadastreOverlay from '../components/CadastreOverlay';
 import DrawingLayer from '../components/DrawingLayer';
 import LinesLayer from '../components/LinesLayer';
 import WalkingLayer from '../components/WalkingLayer';
@@ -51,7 +52,7 @@ export default function Property() {
   const [selectedVertexIndex, setSelectedVertexIndex] = useState<number | null>(null);
   const [measurePoints, setMeasurePoints] = useState<[number, number][]>([]);
   const [sketchPoints, setSketchPoints] = useState<[number, number][]>([]);
-  const [showCadastre, setShowCadastre] = useLocalStorageBool('showCadastre', true);
+  const layerSelection = useLayerSelection();
   const [exporting, setExporting] = useState<ExportKind | null>(null);
   const [exportError, setExportError] = useState<string | null>(null);
 
@@ -288,28 +289,37 @@ export default function Property() {
 
   return (
     <div className="flex h-full flex-col">
-      <header className="flex items-center justify-between gap-3 border-b border-slate-200 bg-white px-4 py-3 shadow-sm">
+      <header className="flex items-center justify-between gap-3 border-b bg-background px-4 py-3 shadow-sm">
         <div className="min-w-0">
-          <Link to="/" className="text-sm text-slate-500 hover:underline">
+          <Link to="/" className="text-sm text-muted-foreground hover:underline">
             ← Alle locaties
           </Link>
           <h1 className="truncate text-lg font-semibold">{formatDisplayAddress(property)}</h1>
         </div>
-        <span className="shrink-0 text-xs text-slate-500">
-          {property.centerLat.toFixed(5)}, {property.centerLng.toFixed(5)}
-        </span>
+        <div className="flex shrink-0 items-center gap-3">
+          <span className="text-xs text-muted-foreground">
+            {property.centerLat.toFixed(5)}, {property.centerLng.toFixed(5)}
+          </span>
+          <ModeToggle />
+        </div>
       </header>
 
       <div className="flex flex-1 flex-col overflow-hidden md:flex-row">
         <div ref={mapContainerRef} className="relative h-[55vh] md:h-auto md:flex-1">
-          <MapCanvas lat={property.centerLat} lng={property.centerLng} showMarker={false}>
-            {showCadastre && <CadastreOverlay />}
-            <LinesLayer
-              lines={lines}
-              onLineClick={setEditingLineId}
-              interactive={!isDrafting}
-              hideLineId={mode === 'editing' ? editingGeometryLineId : null}
-            />
+          <MapCanvas
+            lat={property.centerLat}
+            lng={property.centerLng}
+            showMarker={false}
+            selection={layerSelection}
+          >
+            {layerSelection.overlays.has('user-drawings') && (
+              <LinesLayer
+                lines={lines}
+                onLineClick={setEditingLineId}
+                interactive={!isDrafting}
+                hideLineId={mode === 'editing' ? editingGeometryLineId : null}
+              />
+            )}
             {mode === 'drawing' && (
               <DrawingLayer
                 vertices={clickVertices}
@@ -351,21 +361,15 @@ export default function Property() {
             )}
           </MapCanvas>
           {isDrafting && (
-            <div className="pointer-events-none absolute left-1/2 top-3 z-[500] -translate-x-1/2 rounded-full bg-slate-900/90 px-3 py-1 text-xs font-medium text-white shadow-lg">
+            <div className="pointer-events-none absolute left-1/2 top-3 z-[500] -translate-x-1/2 rounded-full bg-primary/90 px-3 py-1 text-xs font-medium text-primary-foreground shadow-lg">
               {bannerText}
             </div>
           )}
-          <label className="absolute right-3 top-3 z-[500] flex cursor-pointer items-center gap-1.5 rounded bg-white px-2 py-1 text-xs shadow">
-            <input
-              type="checkbox"
-              checked={showCadastre}
-              onChange={(e) => setShowCadastre(e.target.checked)}
-              className="h-3 w-3 cursor-pointer"
-            />
-            Kadastrale Kaart
-          </label>
+          <div className="absolute right-3 top-3 z-[1000]">
+            <LayerManagerButton />
+          </div>
         </div>
-        <aside className="w-full border-t border-slate-200 bg-white md:w-80 md:border-l md:border-t-0">
+        <aside className="w-full border-t bg-background md:w-80 md:border-l md:border-t-0">
           <LinesPanel
             lines={lines}
             mode={mode}
@@ -415,10 +419,10 @@ export default function Property() {
 function Shell({ children }: { children: React.ReactNode }) {
   return (
     <main className="mx-auto max-w-2xl px-4 py-8">
-      <Link to="/" className="text-sm text-slate-500 hover:underline">
-        ← All properties
+      <Link to="/" className="text-sm text-muted-foreground hover:underline">
+        ← Alle locaties
       </Link>
-      <p className="mt-4 text-slate-700">{children}</p>
+      <p className="mt-4 text-foreground">{children}</p>
     </main>
   );
 }

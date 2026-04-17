@@ -1,10 +1,16 @@
 import { useRef, useState, type ChangeEvent } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useLiveQuery } from 'dexie-react-hooks';
-import { deleteProperty, listProperties } from '../db/properties';
-import { formatDisplayAddress } from '../lib/address';
-import { useInstallPrompt } from '../hooks/useInstallPrompt';
-import AddPropertyPanel from '../components/AddPropertyPanel';
+import { MapPin } from 'lucide-react';
+import { toast } from 'sonner';
+
+import { deleteProperty, listProperties } from '@/db/properties';
+import { formatDisplayAddress } from '@/lib/address';
+import { useInstallPrompt } from '@/hooks/useInstallPrompt';
+import AddPropertyPanel from '@/components/AddPropertyPanel';
+import { ModeToggle } from '@/components/mode-toggle';
+import { Button } from '@/components/ui/button';
+import { Card, CardContent } from '@/components/ui/card';
 
 export default function Home() {
   const navigate = useNavigate();
@@ -12,7 +18,6 @@ export default function Home() {
   const { installable, install } = useInstallPrompt();
 
   const [importing, setImporting] = useState(false);
-  const [importError, setImportError] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   async function handleDelete(id: string) {
@@ -24,15 +29,14 @@ export default function Home() {
     const file = e.target.files?.[0];
     e.target.value = '';
     if (!file) return;
-    setImportError(null);
     setImporting(true);
     try {
       const text = await file.text();
-      const { importGeoJsonFromText } = await import('../lib/export/geojson');
+      const { importGeoJsonFromText } = await import('@/lib/export/geojson');
       const result = await importGeoJsonFromText(text);
       navigate(`/property/${result.property.id}`);
     } catch (err) {
-      setImportError(err instanceof Error ? err.message : 'Import mislukt.');
+      toast.error(err instanceof Error ? err.message : 'Import mislukt.');
     } finally {
       setImporting(false);
     }
@@ -43,32 +47,32 @@ export default function Home() {
       <header className="mb-6 flex items-start justify-between gap-3">
         <div>
           <h1 className="text-3xl font-bold">Leidingen in kaart</h1>
-          <p className="mt-1 text-slate-600">
+          <p className="mt-1 text-muted-foreground">
             Breng water-, gas-, stroom- en andere leidingen op uw perceel in kaart.
           </p>
         </div>
-        {installable && (
-          <button
-            onClick={install}
-            className="shrink-0 rounded border border-slate-300 bg-white px-3 py-1.5 text-sm hover:bg-slate-100"
-          >
-            App installeren
-          </button>
-        )}
+        <div className="flex shrink-0 items-center gap-2">
+          {installable && (
+            <Button variant="outline" size="sm" onClick={install}>
+              App installeren
+            </Button>
+          )}
+          <ModeToggle />
+        </div>
       </header>
 
       <AddPropertyPanel />
 
-      <div className="mt-3 flex items-center gap-2 text-sm text-slate-500">
+      <div className="mt-3 flex items-center gap-2 text-sm text-muted-foreground">
         <span>of</span>
-        <button
-          type="button"
+        <Button
+          variant="outline"
+          size="sm"
           onClick={() => fileInputRef.current?.click()}
           disabled={importing}
-          className="rounded border border-slate-300 bg-white px-3 py-1.5 text-sm hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-50"
         >
           {importing ? 'Importeren…' : 'Importeer GeoJSON'}
-        </button>
+        </Button>
         <input
           ref={fileInputRef}
           type="file"
@@ -77,34 +81,39 @@ export default function Home() {
           onChange={handleImportChange}
         />
       </div>
-      {importError && <p className="mt-2 text-sm text-red-600">{importError}</p>}
 
       <section className="mt-8">
         <h2 className="mb-3 text-lg font-semibold">Opgeslagen locaties</h2>
         {properties === undefined ? (
-          <p className="text-slate-500">Laden…</p>
+          <p className="text-muted-foreground">Laden…</p>
         ) : properties.length === 0 ? (
           <EmptyState />
         ) : (
           <ul className="flex flex-col gap-2">
             {properties.map((p) => (
-              <li
-                key={p.id}
-                className="flex items-center justify-between gap-3 rounded border border-slate-200 bg-white p-3 shadow-sm"
-              >
-                <Link to={`/property/${p.id}`} className="flex-1 truncate hover:underline">
-                  <span className="font-medium">{formatDisplayAddress(p)}</span>
-                  <span className="ml-2 text-xs text-slate-500">
-                    {p.centerLat.toFixed(5)}, {p.centerLng.toFixed(5)}
-                  </span>
-                </Link>
-                <button
-                  onClick={() => handleDelete(p.id)}
-                  className="rounded px-2 py-1 text-sm text-red-600 hover:bg-red-50"
-                  aria-label={`${formatDisplayAddress(p)} verwijderen`}
-                >
-                  Verwijderen
-                </button>
+              <li key={p.id}>
+                <Card>
+                  <CardContent className="flex items-center justify-between gap-3 p-3">
+                    <Link
+                      to={`/property/${p.id}`}
+                      className="flex-1 truncate hover:underline"
+                    >
+                      <span className="font-medium">{formatDisplayAddress(p)}</span>
+                      <span className="ml-2 text-xs text-muted-foreground">
+                        {p.centerLat.toFixed(5)}, {p.centerLng.toFixed(5)}
+                      </span>
+                    </Link>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="text-destructive hover:bg-destructive/10 hover:text-destructive"
+                      onClick={() => handleDelete(p.id)}
+                      aria-label={`${formatDisplayAddress(p)} verwijderen`}
+                    >
+                      Verwijderen
+                    </Button>
+                  </CardContent>
+                </Card>
               </li>
             ))}
           </ul>
@@ -116,28 +125,14 @@ export default function Home() {
 
 function EmptyState() {
   return (
-    <div className="flex flex-col items-center justify-center gap-3 rounded-lg border border-dashed border-slate-300 bg-white p-8 text-center">
-      <svg
-        width="56"
-        height="56"
-        viewBox="0 0 56 56"
-        fill="none"
-        className="text-slate-400"
-        aria-hidden
-      >
-        <circle cx="28" cy="22" r="9" stroke="currentColor" strokeWidth="2.5" />
-        <circle cx="28" cy="22" r="3" fill="currentColor" />
-        <path d="M28 31 L28 42" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" />
-        <path
-          d="M10 48 L46 48"
-          stroke="currentColor"
-          strokeWidth="2.5"
-          strokeLinecap="round"
-          strokeDasharray="4 4"
-        />
-      </svg>
-      <p className="text-sm text-slate-600">Nog geen locaties.</p>
-      <p className="text-xs text-slate-400">Voeg hierboven een adres toe om te beginnen.</p>
-    </div>
+    <Card>
+      <CardContent className="flex flex-col items-center justify-center gap-3 border border-dashed border-muted-foreground/40 bg-transparent p-8 text-center">
+        <MapPin className="h-10 w-10 text-muted-foreground" strokeWidth={1.5} />
+        <p className="text-sm">Nog geen locaties.</p>
+        <p className="text-xs text-muted-foreground">
+          Voeg hierboven een adres toe om te beginnen.
+        </p>
+      </CardContent>
+    </Card>
   );
 }

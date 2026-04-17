@@ -1,11 +1,18 @@
 import { useState, type FormEvent } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { addProperty, PropertyValidationError } from '../db/properties';
+import { toast } from 'sonner';
+
+import { addProperty, PropertyValidationError } from '@/db/properties';
 import {
   geocodeAddress,
   reverseGeocode,
   type StructuredAddress,
-} from '../lib/geocode';
+} from '@/lib/geocode';
+import { Button } from '@/components/ui/button';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 
 type Mode = 'typed' | 'gps';
 
@@ -38,35 +45,32 @@ export default function AddPropertyPanel() {
   const [mode, setMode] = useState<Mode>('typed');
   const [query, setQuery] = useState('');
   const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
   const [draft, setDraft] = useState<Draft | null>(null);
 
   async function handleTypedSubmit(e: FormEvent) {
     e.preventDefault();
-    setError(null);
     setBusy(true);
     try {
       const hit = await geocodeAddress(query);
       if (!hit) {
-        setError('Geen resultaten voor dit adres. Probeer het specifieker.');
+        toast.error('Geen resultaten voor dit adres. Probeer het specifieker.');
         return;
       }
       setDraft(draftFromStructured(hit));
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Zoeken mislukt.');
+      toast.error(err instanceof Error ? err.message : 'Zoeken mislukt.');
     } finally {
       setBusy(false);
     }
   }
 
   function handleUseLocation() {
-    setError(null);
     if (typeof navigator === 'undefined' || !('geolocation' in navigator)) {
-      setError('Locatie wordt niet ondersteund in deze browser.');
+      toast.error('Locatie wordt niet ondersteund in deze browser.');
       return;
     }
     if (typeof window !== 'undefined' && window.isSecureContext === false) {
-      setError('Locatie vereist HTTPS of localhost.');
+      toast.error('Locatie vereist HTTPS of localhost.');
       return;
     }
     setBusy(true);
@@ -75,14 +79,16 @@ export default function AddPropertyPanel() {
         try {
           const hit = await reverseGeocode(pos.coords.latitude, pos.coords.longitude);
           if (!hit) {
-            setError(
+            toast.error(
               'Geen adres gevonden op deze locatie. Typ het adres in plaats daarvan.',
             );
             return;
           }
           setDraft(draftFromStructured(hit));
         } catch (err) {
-          setError(err instanceof Error ? err.message : 'Omgekeerd geocoderen mislukt.');
+          toast.error(
+            err instanceof Error ? err.message : 'Omgekeerd geocoderen mislukt.',
+          );
         } finally {
           setBusy(false);
         }
@@ -90,13 +96,13 @@ export default function AddPropertyPanel() {
       (geoErr) => {
         setBusy(false);
         if (geoErr.code === geoErr.PERMISSION_DENIED) {
-          setError('Locatietoestemming geweigerd. Geef toegang of typ het adres.');
+          toast.error('Locatietoestemming geweigerd. Geef toegang of typ het adres.');
         } else if (geoErr.code === geoErr.POSITION_UNAVAILABLE) {
-          setError('Locatie niet beschikbaar. Probeer het buiten opnieuw.');
+          toast.error('Locatie niet beschikbaar. Probeer het buiten opnieuw.');
         } else if (geoErr.code === geoErr.TIMEOUT) {
-          setError('Locatie ophalen duurde te lang.');
+          toast.error('Locatie ophalen duurde te lang.');
         } else {
-          setError('Locatie kon niet worden opgehaald.');
+          toast.error('Locatie kon niet worden opgehaald.');
         }
       },
       { enableHighAccuracy: true, timeout: 15_000, maximumAge: 0 },
@@ -105,7 +111,6 @@ export default function AddPropertyPanel() {
 
   async function handleSave() {
     if (!draft) return;
-    setError(null);
     try {
       const created = await addProperty({
         street: draft.street,
@@ -121,14 +126,13 @@ export default function AddPropertyPanel() {
       setQuery('');
       navigate(`/property/${created.id}`);
     } catch (err) {
-      if (err instanceof PropertyValidationError) setError(err.message);
-      else setError(err instanceof Error ? err.message : 'Opslaan mislukt.');
+      if (err instanceof PropertyValidationError) toast.error(err.message);
+      else toast.error(err instanceof Error ? err.message : 'Opslaan mislukt.');
     }
   }
 
   function handleCancelConfirm() {
     setDraft(null);
-    setError(null);
   }
 
   const canSave =
@@ -138,146 +142,116 @@ export default function AddPropertyPanel() {
     draft.city.trim() !== '';
 
   return (
-    <section className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
-      <h2 className="mb-3 text-lg font-semibold">Locatie toevoegen</h2>
+    <Card>
+      <CardHeader>
+        <CardTitle>Locatie toevoegen</CardTitle>
+      </CardHeader>
+      <CardContent>
+        {draft === null && (
+          <Tabs value={mode} onValueChange={(v) => setMode(v as Mode)} className="w-full">
+            <TabsList className="grid w-full grid-cols-2">
+              <TabsTrigger value="typed">Adres invullen</TabsTrigger>
+              <TabsTrigger value="gps">Gebruik mijn locatie</TabsTrigger>
+            </TabsList>
 
-      {draft === null && (
-        <>
-          <div
-            role="tablist"
-            className="mb-3 flex gap-1 rounded border border-slate-200 bg-slate-50 p-1"
-          >
-            <button
-              type="button"
-              role="tab"
-              aria-selected={mode === 'typed'}
-              onClick={() => {
-                setMode('typed');
-                setError(null);
-              }}
-              className={`flex-1 rounded px-2 py-1 text-sm transition ${
-                mode === 'typed' ? 'bg-white shadow' : 'text-slate-600 hover:text-slate-900'
-              }`}
-            >
-              Adres invullen
-            </button>
-            <button
-              type="button"
-              role="tab"
-              aria-selected={mode === 'gps'}
-              onClick={() => {
-                setMode('gps');
-                setError(null);
-              }}
-              className={`flex-1 rounded px-2 py-1 text-sm transition ${
-                mode === 'gps' ? 'bg-white shadow' : 'text-slate-600 hover:text-slate-900'
-              }`}
-            >
-              Gebruik mijn locatie
-            </button>
-          </div>
+            <TabsContent value="typed" className="mt-4">
+              <form onSubmit={handleTypedSubmit} className="flex flex-col gap-3 sm:flex-row">
+                <Input
+                  value={query}
+                  onChange={(e) => setQuery(e.target.value)}
+                  placeholder="Herengracht 1, Amsterdam"
+                  disabled={busy}
+                  required
+                  className="flex-1"
+                />
+                <Button type="submit" disabled={busy || !query.trim()}>
+                  {busy ? 'Zoeken…' : 'Zoeken'}
+                </Button>
+              </form>
+            </TabsContent>
 
-          {mode === 'typed' ? (
-            <form onSubmit={handleTypedSubmit} className="flex flex-col gap-3 sm:flex-row">
-              <input
-                type="text"
-                value={query}
-                onChange={(e) => setQuery(e.target.value)}
-                placeholder="Herengracht 1, Amsterdam"
-                className="flex-1 rounded border border-slate-300 px-3 py-2 focus:border-slate-500 focus:outline-none"
+            <TabsContent value="gps" className="mt-4">
+              <Button
+                type="button"
+                onClick={handleUseLocation}
                 disabled={busy}
-                required
-              />
-              <button
-                type="submit"
-                disabled={busy || !query.trim()}
-                className="rounded bg-slate-900 px-4 py-2 font-medium text-white hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-50"
+                className="w-full"
               >
-                {busy ? 'Zoeken…' : 'Zoeken'}
-              </button>
-            </form>
-          ) : (
-            <button
-              type="button"
-              onClick={handleUseLocation}
-              disabled={busy}
-              className="w-full rounded bg-emerald-600 px-4 py-2 font-medium text-white hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-50"
-            >
-              {busy ? 'Locatie ophalen…' : 'Gebruik mijn locatie'}
-            </button>
-          )}
-        </>
-      )}
+                {busy ? 'Locatie ophalen…' : 'Gebruik mijn locatie'}
+              </Button>
+            </TabsContent>
+          </Tabs>
+        )}
 
-      {draft !== null && (
-        <div className="flex flex-col gap-3">
-          <p className="text-sm text-slate-600">
-            Controleer het adres en pas het waar nodig aan.
-          </p>
-          <div className="grid grid-cols-3 gap-2">
-            <label className="col-span-2 flex flex-col gap-1 text-xs">
-              <span className="font-medium">Straat *</span>
-              <input
-                type="text"
-                value={draft.street}
-                onChange={(e) => setDraft({ ...draft, street: e.target.value })}
-                className="rounded border border-slate-300 px-2 py-1.5"
-              />
-            </label>
-            <label className="flex flex-col gap-1 text-xs">
-              <span className="font-medium">Nr. *</span>
-              <input
-                type="text"
-                value={draft.houseNumber}
-                onChange={(e) => setDraft({ ...draft, houseNumber: e.target.value })}
-                className="rounded border border-slate-300 px-2 py-1.5"
-              />
-            </label>
-          </div>
-          <div className="grid grid-cols-2 gap-2">
-            <label className="flex flex-col gap-1 text-xs">
-              <span className="font-medium">Postcode</span>
-              <input
-                type="text"
-                value={draft.postcode}
-                onChange={(e) => setDraft({ ...draft, postcode: e.target.value })}
-                className="rounded border border-slate-300 px-2 py-1.5"
-              />
-            </label>
-            <label className="flex flex-col gap-1 text-xs">
-              <span className="font-medium">Plaats *</span>
-              <input
-                type="text"
-                value={draft.city}
-                onChange={(e) => setDraft({ ...draft, city: e.target.value })}
-                className="rounded border border-slate-300 px-2 py-1.5"
-              />
-            </label>
-          </div>
-          <p className="text-xs text-slate-500">
-            {draft.centerLat.toFixed(5)}, {draft.centerLng.toFixed(5)}
-          </p>
-          <div className="flex gap-2">
-            <button
-              type="button"
-              onClick={handleCancelConfirm}
-              className="flex-1 rounded border border-slate-300 px-3 py-2 text-sm hover:bg-slate-100"
-            >
-              Annuleren
-            </button>
-            <button
-              type="button"
-              onClick={handleSave}
-              disabled={!canSave}
-              className="flex-1 rounded bg-slate-900 px-3 py-2 text-sm font-medium text-white hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-50"
-            >
-              Opslaan
-            </button>
-          </div>
-        </div>
-      )}
+        {draft !== null && (
+          <div className="flex flex-col gap-4">
+            <p className="text-sm text-muted-foreground">
+              Controleer het adres en pas het waar nodig aan.
+            </p>
 
-      {error && <p className="mt-3 text-sm text-red-600">{error}</p>}
-    </section>
+            <div className="grid grid-cols-3 gap-3">
+              <div className="col-span-2 flex flex-col gap-1.5">
+                <Label htmlFor="street">Straat *</Label>
+                <Input
+                  id="street"
+                  value={draft.street}
+                  onChange={(e) => setDraft({ ...draft, street: e.target.value })}
+                />
+              </div>
+              <div className="flex flex-col gap-1.5">
+                <Label htmlFor="houseNumber">Nr. *</Label>
+                <Input
+                  id="houseNumber"
+                  value={draft.houseNumber}
+                  onChange={(e) => setDraft({ ...draft, houseNumber: e.target.value })}
+                />
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-3">
+              <div className="flex flex-col gap-1.5">
+                <Label htmlFor="postcode">Postcode</Label>
+                <Input
+                  id="postcode"
+                  value={draft.postcode}
+                  onChange={(e) => setDraft({ ...draft, postcode: e.target.value })}
+                />
+              </div>
+              <div className="flex flex-col gap-1.5">
+                <Label htmlFor="city">Plaats *</Label>
+                <Input
+                  id="city"
+                  value={draft.city}
+                  onChange={(e) => setDraft({ ...draft, city: e.target.value })}
+                />
+              </div>
+            </div>
+
+            <p className="text-xs text-muted-foreground">
+              {draft.centerLat.toFixed(5)}, {draft.centerLng.toFixed(5)}
+            </p>
+
+            <div className="flex gap-2">
+              <Button
+                type="button"
+                variant="outline"
+                onClick={handleCancelConfirm}
+                className="flex-1"
+              >
+                Annuleren
+              </Button>
+              <Button
+                type="button"
+                onClick={handleSave}
+                disabled={!canSave}
+                className="flex-1"
+              >
+                Opslaan
+              </Button>
+            </div>
+          </div>
+        )}
+      </CardContent>
+    </Card>
   );
 }

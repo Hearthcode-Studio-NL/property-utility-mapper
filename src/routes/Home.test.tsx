@@ -6,8 +6,16 @@ import Home from './Home';
 import { db } from '../db/dexie';
 import { addProperty } from '../db/properties';
 import * as geocode from '../lib/geocode';
+import { toast } from 'sonner';
 
 vi.mock('../lib/geocode');
+vi.mock('sonner', () => ({
+  toast: {
+    error: vi.fn(),
+    success: vi.fn(),
+    message: vi.fn(),
+  },
+}));
 
 function FakeProperty() {
   const { id } = useParams<{ id: string }>();
@@ -111,7 +119,7 @@ describe('Home', () => {
     expect(await db.properties.toArray()).toHaveLength(0);
   });
 
-  it('shows a typed-form error when geocoding returns no results', async () => {
+  it('shows a typed-form error toast when geocoding returns no results', async () => {
     vi.mocked(geocode.geocodeAddress).mockResolvedValue(null);
 
     const user = userEvent.setup();
@@ -124,7 +132,9 @@ describe('Home', () => {
     await user.click(screen.getByRole('button', { name: /^Zoeken$/ }));
 
     await waitFor(() => {
-      expect(screen.getByText(/Geen resultaten/i)).toBeInTheDocument();
+      expect(toast.error).toHaveBeenCalledWith(
+        expect.stringMatching(/Geen resultaten/i),
+      );
     });
     expect(await db.properties.toArray()).toHaveLength(0);
   });

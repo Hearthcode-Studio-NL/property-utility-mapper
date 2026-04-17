@@ -1,7 +1,28 @@
-import { useEffect, useState, type FormEvent } from 'react';
-import type { UtilityLine, UtilityType } from '../types';
-import type { UtilityLinePatch } from '../db/utilityLines';
-import { UTILITY_META, UTILITY_TYPES } from '../lib/utilityColors';
+import { useState, type FormEvent } from 'react';
+import type { UtilityLine, UtilityType } from '@/types';
+import type { UtilityLinePatch } from '@/db/utilityLines';
+import { UTILITY_META, UTILITY_TYPES } from '@/lib/utilityColors';
+import { Button } from '@/components/ui/button';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
+import { Separator } from '@/components/ui/separator';
+import PhotoUploader from '@/components/PhotoUploader';
+import PhotoGrid from '@/components/PhotoGrid';
 
 interface UtilityLineEditorProps {
   line: UtilityLine;
@@ -25,16 +46,7 @@ export default function UtilityLineEditor({
   const [installDate, setInstallDate] = useState(line.installDate?.slice(0, 10) ?? '');
   const [notes, setNotes] = useState(line.notes ?? '');
 
-  useEffect(() => {
-    function onKey(e: KeyboardEvent) {
-      if (e.key === 'Escape') onClose();
-    }
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, [onClose]);
-
-  function handleSubmit(e: FormEvent) {
-    e.preventDefault();
+  function applyChanges() {
     onSave({
       type,
       depthCm: depthCm === '' ? undefined : Number(depthCm),
@@ -45,127 +57,129 @@ export default function UtilityLineEditor({
     });
   }
 
-  return (
-    <div
-      className="fixed inset-0 z-[1000] flex items-center justify-center bg-black/40 p-4"
-      onClick={onClose}
-      role="presentation"
-    >
-      <div
-        className="w-full max-w-md rounded-lg bg-white p-5 shadow-xl"
-        onClick={(e) => e.stopPropagation()}
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby="line-editor-title"
-      >
-        <h2 id="line-editor-title" className="mb-4 text-lg font-semibold">
-          Leiding bewerken
-        </h2>
-        <form onSubmit={handleSubmit} className="flex flex-col gap-3">
-          <label className="flex flex-col gap-1">
-            <span className="text-sm font-medium">Type</span>
-            <select
-              value={type}
-              onChange={(e) => setType(e.target.value as UtilityType)}
-              className="rounded border border-slate-300 px-2 py-1"
-            >
-              {UTILITY_TYPES.map((t) => (
-                <option key={t} value={t}>
-                  {UTILITY_META[t].label}
-                </option>
-              ))}
-            </select>
-          </label>
+  function handleFormSubmit(e: FormEvent) {
+    e.preventDefault();
+    applyChanges();
+  }
 
-          <div className="grid grid-cols-2 gap-3">
-            <label className="flex flex-col gap-1">
-              <span className="text-sm font-medium">Diepte (cm)</span>
-              <input
-                type="number"
-                value={depthCm}
-                onChange={(e) => setDepthCm(e.target.value)}
-                className="rounded border border-slate-300 px-2 py-1"
-                min="0"
-                inputMode="numeric"
-              />
-            </label>
-            <label className="flex flex-col gap-1">
-              <span className="text-sm font-medium">Diameter (mm)</span>
-              <input
-                type="number"
-                value={diameterMm}
-                onChange={(e) => setDiameterMm(e.target.value)}
-                className="rounded border border-slate-300 px-2 py-1"
-                min="0"
-                inputMode="numeric"
-              />
-            </label>
+  return (
+    <Dialog open onOpenChange={(open) => !open && onClose()}>
+      <DialogContent className="flex max-h-[90vh] flex-col gap-0 overflow-hidden p-0 sm:max-w-md">
+        <DialogHeader className="border-b px-6 pb-4 pt-6">
+          <DialogTitle>Leiding bewerken</DialogTitle>
+          <DialogDescription className="sr-only">
+            Pas de eigenschappen van deze leiding aan, bewerk de punten, of
+            verwijder de leiding.
+          </DialogDescription>
+        </DialogHeader>
+
+        <form
+          onSubmit={handleFormSubmit}
+          className="flex flex-1 flex-col gap-3 overflow-y-auto px-6 py-4"
+        >
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="type">Type</Label>
+            <Select value={type} onValueChange={(v) => setType(v as UtilityType)}>
+              <SelectTrigger id="type">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {UTILITY_TYPES.map((t) => (
+                  <SelectItem key={t} value={t}>
+                    {UTILITY_META[t].label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </div>
 
-          <label className="flex flex-col gap-1">
-            <span className="text-sm font-medium">Materiaal</span>
-            <input
+          <div className="grid grid-cols-2 gap-3">
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="depth">Diepte (cm)</Label>
+              <Input
+                id="depth"
+                type="number"
+                inputMode="numeric"
+                min={0}
+                value={depthCm}
+                onChange={(e) => setDepthCm(e.target.value)}
+              />
+            </div>
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="diameter">Diameter (mm)</Label>
+              <Input
+                id="diameter"
+                type="number"
+                inputMode="numeric"
+                min={0}
+                value={diameterMm}
+                onChange={(e) => setDiameterMm(e.target.value)}
+              />
+            </div>
+          </div>
+
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="material">Materiaal</Label>
+            <Input
+              id="material"
               type="text"
               value={material}
               onChange={(e) => setMaterial(e.target.value)}
-              className="rounded border border-slate-300 px-2 py-1"
               placeholder="bv. PE, PVC, koper"
             />
-          </label>
+          </div>
 
-          <label className="flex flex-col gap-1">
-            <span className="text-sm font-medium">Aanlegdatum</span>
-            <input
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="installDate">Aanlegdatum</Label>
+            <Input
+              id="installDate"
               type="date"
               value={installDate}
               onChange={(e) => setInstallDate(e.target.value)}
-              className="rounded border border-slate-300 px-2 py-1"
             />
-          </label>
+          </div>
 
-          <label className="flex flex-col gap-1">
-            <span className="text-sm font-medium">Notities</span>
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="notes">Notities</Label>
             <textarea
+              id="notes"
               value={notes}
               onChange={(e) => setNotes(e.target.value)}
               rows={3}
-              className="rounded border border-slate-300 px-2 py-1"
+              className="flex w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm shadow-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
             />
-          </label>
+          </div>
 
-          <div className="mt-2 flex flex-wrap items-center justify-between gap-2">
-            <button
-              type="button"
-              onClick={onDelete}
-              className="rounded px-3 py-1.5 text-sm text-red-600 hover:bg-red-50"
-            >
-              Verwijderen
-            </button>
-            <div className="flex flex-wrap gap-2">
-              <button
-                type="button"
-                onClick={onEditGeometry}
-                className="rounded border border-slate-300 px-3 py-1.5 text-sm hover:bg-slate-100"
-              >
-                Punten bewerken
-              </button>
-              <button
-                type="button"
-                onClick={onClose}
-                className="rounded px-3 py-1.5 text-sm text-slate-600 hover:bg-slate-100"
-              >
-                Annuleren
-              </button>
-              <button
-                type="submit"
-                className="rounded bg-slate-900 px-3 py-1.5 text-sm font-medium text-white hover:bg-slate-800"
-              >
-                Opslaan
-              </button>
+          <Separator />
+
+          <div className="flex flex-col gap-2">
+            <div className="flex items-center justify-between">
+              <Label>Foto's</Label>
+              <PhotoUploader lineId={line.id} photoCount={line.photoIds?.length ?? 0} />
             </div>
+            <PhotoGrid lineId={line.id} />
           </div>
         </form>
-      </div>
-    </div>
+
+        <DialogFooter className="flex-col gap-2 border-t px-6 py-4 sm:flex-row sm:justify-between">
+          <Button
+            type="button"
+            variant="destructive"
+            onClick={onDelete}
+            className="sm:mr-auto"
+          >
+            Verwijderen
+          </Button>
+          <div className="flex flex-wrap gap-2">
+            <Button type="button" variant="outline" onClick={onEditGeometry}>
+              Punten bewerken
+            </Button>
+            <Button type="button" onClick={applyChanges}>
+              Opslaan
+            </Button>
+          </div>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }

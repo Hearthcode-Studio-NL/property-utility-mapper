@@ -9,7 +9,8 @@ This document explains the *how* — the tech choices, the data shape, the folde
 | Build tool       | **Vite**                       | Instant dev server, zero config for React + TS. Beats Create React App on every axis and is the current default.                   |
 | UI framework     | **React 18**                   | Massive ecosystem, excellent hooks model, `useSyncExternalStore` pairs well with Dexie's live queries.                             |
 | Language         | **TypeScript (strict)**        | Catches whole classes of bugs at edit time. Strict mode means `null` and `undefined` are explicit — crucial for IndexedDB records. |
-| Styling          | **Tailwind CSS**               | Utility-first, no naming fatigue, easy to keep consistent. One `index.css` file, no per-component stylesheets.                     |
+| Styling          | **Tailwind CSS** + **shadcn/ui** | Tailwind utilities for layout. shadcn/ui (style `new-york`, base colour `slate`, CSS variables on) for every interactive primitive — buttons, inputs, dialogs, tabs, forms, switches, toasts, dropdowns. shadcn is not a traditional library: the CLI **copies** component source into `src/components/ui/`, so we own them and can patch as needed. CSS variables make dark mode work without per-component changes. |
+| Theming          | **shadcn Vite dark-mode pattern** | `ThemeProvider` + `ModeToggle` components following shadcn's official Vite guide. Stores the `light|dark|system` choice in `localStorage` under `pum-theme` and toggles the `dark` class on `<html>`. All colours in the UI are CSS-variable classes (`bg-primary`, `text-foreground`, etc.) so the dark palette applies automatically.                                |
 | Router           | **react-router-dom v6**        | Two routes is plenty. Declarative, well documented, integrates with Vite out of the box.                                           |
 | Map              | **Leaflet via react-leaflet**  | Free, OSM-friendly, good mobile support, simple API. Mapbox GL would be prettier but needs a token and costs money.                |
 | Tiles            | **OpenStreetMap (tile.osm.org)** | Free, acceptable for low-volume personal use. Must attribute. Switch to a paid provider if traffic grows.                          |
@@ -22,7 +23,8 @@ This document explains the *how* — the tech choices, the data shape, the folde
 - **Redux / Zustand / MobX** — Dexie's reactivity is enough, and global state for a single-user single-tab app is mostly a trap.
 - **Next.js / Remix** — SPA is fine. No SEO concerns. No server.
 - **A backend** — v1 is 100% local. Adding a backend turns "free personal tool" into "service I must keep running."
-- **A CSS-in-JS library** — Tailwind covers it; no need for emotion/styled-components.
+- **A CSS-in-JS library** — Tailwind + shadcn cover it.
+- **Other UI libraries** — MUI, Chakra, Mantine, Ant Design, HeadlessUI. shadcn owns the design system; anything else competes with its tokens and creates friction.
 - **Yarn / pnpm** — npm is bundled with Node. One tool fewer to install.
 
 ## Data model
@@ -94,6 +96,16 @@ interface KlicFile {
 }
 ```
 
+### Photo storage pipeline
+
+1. **Input.** User picks one or more files in `PhotoUploader` (file picker on desktop, `capture="environment"` hint on coarse-pointer devices so the back camera opens directly).
+2. **Decode with EXIF.** `createImageBitmap(file, { imageOrientation: 'from-image' })` auto-applies EXIF rotation; portrait phone shots render upright without custom rotation math.
+3. **Resize via Canvas.** `computeResizeTarget(w, h, maxLongestEdge)` returns the destination size; the image is drawn onto a `<canvas>` sized accordingly; `canvas.toBlob('image/jpeg', quality)` produces the final Blob. Two passes per upload: **full** (1920 px / 0.85 quality) + **thumbnail** (256 px / 0.7 quality).
+4. **Transactional write.** `addPhoto(lineId, file)` writes the `Photo` row and appends its id to `line.photoIds` in a single `rw` Dexie transaction. The heavy CPU work (decode + resize) happens outside the transaction to avoid stalling it.
+5. **Cascade on line delete.** `deleteUtilityLine` (and `deleteProperty`) call `deletePhotosForLineTx` inside their existing transaction — photos never orphan.
+6. **Render.** `PhotoGrid` renders each thumbnail via `URL.createObjectURL(thumbnailBlob)`; the lightbox (shadcn `Dialog`) uses the full blob. URLs are revoked in the relevant `useEffect` cleanup.
+7. **Cap.** Ten photos per line, enforced in `addPhoto` (throws `PhotoLimitError`) and mirrored in the UI (disabled button + sonner toast).
+
 ### Dexie schema (version 1)
 
 ```ts
@@ -111,11 +123,19 @@ The first string in each `stores` line is the **primary key**. The rest are **in
 
 ## Folder layout
 
+Path alias `@/*` → `src/*` is configured in both `tsconfig.app.json` and `vite.config.ts` (required by shadcn). Either `@/lib/foo` or relative imports work; new code prefers the alias.
+
 ```
+public/
+├── favicon.ico                   # 32×32 legacy ICO referenced via <link rel="icon">
+├── favicon-32.png                # modern PNG fallback
+├── icon-192.png                  # PWA manifest icon (any purpose)
+└── icon-512.png                  # PWA manifest icon (any + maskable)
+
 src/
-├── main.tsx                      # React root, router setup
+├── main.tsx                      # React root, router, ThemeProvider wrap
 ├── App.tsx                       # Route definitions
-├── index.css                     # Tailwind directives only
+├── index.css                     # Tailwind directives + shadcn CSS variables (light + dark palettes)
 ├── types/
 │   └── index.ts                  # All shared TS types (Property, UtilityLine, etc.)
 ├── db/
@@ -128,7 +148,9 @@ src/
 │   ├── distance.ts               # Haversine + path length + formatMeters
 │   ├── simplify.ts               # Douglas-Peucker (pure, equirectangular projection)
 │   ├── snap.ts                   # findSnapTarget (pure, takes projector fn)
-│   ├── utilityColors.ts          # Type → label + color map
+│   ├── ids.ts                    # generateId — UUID v4 with non-secure-context fallbacks
+│   ├── utils.ts                  # cn() className helper (created by shadcn init, keep it)
+│   ├── utilityColors.ts          # Type → label + color map (map data, not theme)
 │   └── export/
 │       ├── download.ts           # Shared download + filename helpers
 │       ├── geojson.ts            # Build + export FeatureCollection
@@ -139,6 +161,11 @@ src/
 │   ├── useInstallPrompt.ts       # captures beforeinstallprompt for "App installeren" button
 │   └── useLocalStorageBool.ts    # persisted boolean state (Kadaster toggle, etc.)
 ├── components/
+│   ├── ui/                       # shadcn/ui primitives (auto-generated, customisable)
+│   │   ├── button.tsx            # ... plus input, label, card, form, dialog, checkbox,
+│   │   └── ...                   # select, toast, tabs, separator, tooltip, switch, dropdown-menu
+│   ├── theme-provider.tsx        # Wraps <html class="dark|light"> toggling; localStorage-backed
+│   ├── mode-toggle.tsx           # Sun/Moon dropdown (Light / Dark / System) in app header
 │   ├── MapCanvas.tsx             # Leaflet map wrapper (accepts layer children)
 │   ├── AddPropertyPanel.tsx      # Two-mode entry (typed / GPS) + confirmation card
 │   ├── DrawingLayer.tsx          # Click-to-draw in-progress polyline
@@ -192,6 +219,14 @@ Both flows converge on `AddPropertyPanel`'s **confirmation card** — an editabl
 4. Header renders `formatDisplayAddress(property)` — e.g. `"Herengracht 1, Amsterdam"`. Coordinates shown separately in small text.
 5. Renders `<MapCanvas lat={p.centerLat} lng={p.centerLng}>` with layer children.
 
+### Theme (light / dark / system)
+
+1. `main.tsx` wraps `<App>` in `<ThemeProvider defaultTheme="system" storageKey="pum-theme">`. The provider reads `localStorage.getItem('pum-theme')` on mount and toggles the `dark` class on `<html>`.
+2. `ModeToggle` lives in the app header (top-right). It's a shadcn `DropdownMenu` with three items — Light, Dark, System — each calling `setTheme()`.
+3. When theme is `system`, the provider subscribes to `matchMedia('(prefers-color-scheme: dark)')` and flips the class automatically on OS-level changes.
+4. **Colour discipline.** Every UI colour comes from CSS variables defined in `index.css` under `:root` (light) and `.dark` (dark). Tailwind classes like `bg-background`, `bg-primary`, `text-muted-foreground` map to those variables. Hard-coded `bg-slate-900` / `text-white` / `bg-emerald-600` are forbidden in UI chrome.
+5. **Exception**: map data colours (utility-type colours in `utilityColors.ts`, vertex handle colours in `index.css`) are semantic, not theme-dependent. They stay hard-coded so "water" is always blue whether you're in dark mode or not.
+
 ### Kadaster cadastral overlay
 
 1. `CadastreOverlay` wraps react-leaflet's `<WMSTileLayer>` pointed at PDOK's BRK service: `https://service.pdok.nl/kadaster/kadastralekaart/wms/v5_0` with `layers="KadastraleKaart"`, `format="image/png"`, `transparent`, `opacity=0.7`.
@@ -228,6 +263,7 @@ Three-tier plan, no end-to-end in v1.
 These are decisions we have deferred. When the time comes to answer them, update this section.
 
 - **Migrating pre-refactor local records** — before the structured-address refactor, Property had `address: string` + `lat` + `lng`. Any records in a user's IndexedDB created before the upgrade have the old shape. Options: (a) Dexie `version(2).upgrade(tx)` that splits the old `address` into best-effort structured fields (risky — Nominatim formats vary); (b) wipe the old table on upgrade (dev-stage loss, acceptable with warning); (c) add a `fullAddress`-only fallback display and force re-confirmation on first open. For this session's local dev data, (b) is simplest; we'll decide before any public deploy.
+- **PWA manifest source.** We have two candidates: (a) `vite-plugin-pwa` generates `dist/manifest.webmanifest` from its `manifest:` config (already in use — owns the service-worker wiring); (b) a static `public/site.webmanifest` that Vite copies through untouched. Running both creates conflicts. Current pick: keep the plugin, update its `manifest:` config to include the new icon set + theme colours. Reconsider if we ever need to serve the manifest during dev (the plugin only injects in production).
 
 - **Tile caching for offline use** — service worker with Workbox? Manual `caches` API? Skip until PWA phase.
 - **PDF export layout** — A4 portrait with a map thumbnail + attribute table, or a full-bleed map? Decide during Phase 4.

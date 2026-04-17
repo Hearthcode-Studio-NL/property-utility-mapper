@@ -10,8 +10,8 @@ class PropertyUtilityMapperDB extends Dexie {
   constructor() {
     super('property-utility-mapper');
 
-    // v1 — pre-structured-address layout. Kept so Dexie can detect and
-    // run the v2 upgrade on users who created data before the refactor.
+    // v1 — pre-structured-address layout. Kept so Dexie detects and runs
+    // the v2 upgrade on users who created data before that refactor.
     this.version(1).stores({
       properties: 'id, address, createdAt',
       utilityLines: 'id, propertyId, type, createdAt',
@@ -20,9 +20,9 @@ class PropertyUtilityMapperDB extends Dexie {
     });
 
     // v2 — structured address. The old `address` / `lat` / `lng` fields
-    // can't be reliably split without a network round-trip, so we wipe
-    // pre-v2 records; users re-add properties through the new flow.
-    // See ARCHITECTURE.md "Open questions" for the migration rationale.
+    // couldn't be reliably split without a network round-trip, so we wiped
+    // pre-v2 records on upgrade (v1 had no user-visible features worth
+    // preserving). See ARCHITECTURE.md "Open questions".
     this.version(2)
       .stores({
         properties: 'id, city, createdAt',
@@ -36,7 +36,40 @@ class PropertyUtilityMapperDB extends Dexie {
         await tx.table('photos').clear();
         await tx.table('klicFiles').clear();
       });
+
+    // v3 — photos. Renames photos.utilityLineId -> photos.lineId (index
+    // too) and adds utilityLines.photoIds: string[]. This time the upgrade
+    // preserves existing data — properties + lines survive, and any prior
+    // photos get their FK renamed in place.
+    this.version(3)
+      .stores({
+        properties: 'id, city, createdAt',
+        utilityLines: 'id, propertyId, type, createdAt',
+        photos: 'id, lineId, createdAt',
+        klicFiles: 'id, propertyId, uploadedAt',
+      })
+      .upgrade(async (tx) => {
+        // Each existing UtilityLine gets an empty photoIds array.
+        await tx
+          .table('utilityLines')
+          .toCollection()
+          .modify((line: UtilityLine & { photoIds?: UUID[] }) => {
+            if (!Array.isArray(line.photoIds)) line.photoIds = [];
+          });
+        // Each existing Photo gets utilityLineId -> lineId.
+        await tx
+          .table('photos')
+          .toCollection()
+          .modify((photo: Photo & { utilityLineId?: string }) => {
+            if (photo.utilityLineId && !photo.lineId) {
+              photo.lineId = photo.utilityLineId;
+              delete photo.utilityLineId;
+            }
+          });
+      });
   }
 }
+
+type UUID = string;
 
 export const db = new PropertyUtilityMapperDB();

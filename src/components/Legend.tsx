@@ -1,9 +1,9 @@
-import { UTILITY_META, UTILITY_TYPES } from '../lib/utilityColors';
+import { UTILITY_META, UTILITY_TYPES } from '@/lib/utilityColors';
 
 export default function Legend() {
   return (
-    <details className="border-t border-slate-200 p-3">
-      <summary className="cursor-pointer list-none text-xs font-medium uppercase tracking-wide text-slate-500">
+    <details className="p-3">
+      <summary className="cursor-pointer list-none text-xs font-medium uppercase tracking-wide text-muted-foreground">
         Legenda
       </summary>
       <ul className="mt-2 grid grid-cols-2 gap-1 text-xs">

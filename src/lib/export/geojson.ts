@@ -64,6 +64,7 @@ export function buildGeoJson(
         diameterMm: line.diameterMm,
         installDate: line.installDate,
         notes: line.notes,
+        photoCount: line.photoIds?.length ?? 0,
         createdAt: line.createdAt,
         updatedAt: line.updatedAt,
       },
@@ -157,6 +158,7 @@ export async function importGeoJsonFromText(text: string): Promise<ImportResult>
       diameterMm: asNumber(feature.properties?.diameterMm),
       installDate: asString(feature.properties?.installDate),
       notes: asString(feature.properties?.notes),
+      photoIds: [],
       createdAt: asString(feature.properties?.createdAt) ?? now,
       updatedAt: now,
     });

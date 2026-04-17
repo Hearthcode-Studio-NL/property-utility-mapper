@@ -38,14 +38,17 @@ export interface UtilityLine {
   diameterMm?: number;
   installDate?: ISODate;
   notes?: string;
+  photoIds: UUID[];
   createdAt: ISODate;
   updatedAt: ISODate;
 }
 
 export interface Photo {
   id: UUID;
-  utilityLineId: UUID;
+  lineId: UUID;
   blob: Blob;
+  thumbnailBlob: Blob;
+  mimeType: string;
   caption?: string;
   createdAt: ISODate;
 }

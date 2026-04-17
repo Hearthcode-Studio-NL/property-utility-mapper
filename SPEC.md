@@ -28,6 +28,8 @@ Explicitly out of scope. Do not build these:
 - State management libraries (Redux, Zustand, MobX, Jotai). React state + Dexie live queries are enough.
 - Server-side rendering or Next.js. It's a SPA.
 - Playwright or other end-to-end tests. Vitest + Testing Library cover unit + integration scope. E2E is a v2 decision.
+- UI component libraries other than shadcn/ui (MUI, Chakra, Mantine, Ant Design, HeadlessUI, etc.). shadcn owns the design system.
+- Hand-coded Tailwind colour classes for UI chrome (e.g. `bg-slate-900`, `text-white`, `bg-emerald-600`). Use CSS-variable classes so dark mode works without per-component fixes. Exception: map-layer colours that encode data (utility-type colour map).
 
 ## Users and user stories
 
@@ -44,11 +46,18 @@ Priority: **P0** = must-have for v1 launch. **P1** = next. **P2** = nice-to-have
 1. *As a homeowner, I can create a new property by typing an address; the app forward-geocodes it via Nominatim and shows a **confirmation card** with street / house number / city fields I can edit before saving.* The backing record stores structured fields + the verbose `fullAddress` for export reference.
 2. *As a homeowner on a phone, I can tap "Use my location"; the browser supplies coordinates, the app **reverse-geocodes** them to a structured address, and the same confirmation card appears pre-filled for me to edit/confirm.* If Geolocation or reverse geocoding fails, I see a clear message and can fall back to typing.
 3. *As a homeowner, I can toggle a Kadaster cadastral overlay ("Kadastrale Kaart") on top of the base map, so I see my parcel boundaries and can draw utility lines relative to them.* Uses PDOK's BRK WMS service (`https://service.pdok.nl/kadaster/kadastralekaart/wms/v5_0`, layer `KadastraleKaart`).
-4. *As a homeowner, I can upload a KLIC PDF / image as a reference layer under the drawing canvas, so I can trace public utilities from it.* (The KLIC file stays as a reference; we do not extract data from it in v1.)
-5. *As a homeowner, I can draw a utility line on the 2D map by clicking vertices, so I can capture lines I know the route of.*
-6. *As a homeowner on a phone, I can press "Start walking" and have the browser record my GPS track as a new line, so I can capture lines while physically walking them.*
-7. *As a homeowner, I can set attributes on each line: type (water/gas/electricity/sewage/internet/irrigation/garden-lighting/drainage), depth in cm, material, diameter in mm, install date, notes, and attach photos.*
-8. *As a homeowner, I can export the full property map as PDF, PNG, and GeoJSON so I can send it to a contractor.*
+4. *As a homeowner, I can switch between Light / Dark / System themes at any time from the top-right of the app header, and my choice persists across reloads.* Implemented with shadcn/ui's Vite dark-mode pattern (`ThemeProvider` + `ModeToggle`) using CSS variables so both palettes work out of the box.
+5. *As a homeowner, I can upload a KLIC PDF / image as a reference layer under the drawing canvas, so I can trace public utilities from it.* (The KLIC file stays as a reference; we do not extract data from it in v1.)
+6. *As a homeowner, I can draw a utility line on the 2D map by clicking vertices, so I can capture lines I know the route of.*
+7. *As a homeowner on a phone, I can press "Start walking" and have the browser record my GPS track as a new line, so I can capture lines while physically walking them.*
+8. *As a homeowner, I can set attributes on each line: type (water/gas/electricity/sewage/internet/irrigation/garden-lighting/drainage), depth in cm, material, diameter in mm, install date, notes, and **attach up to 10 photos**.* Photos are stored locally as JPEG (full-size ≤ 1920 px long edge / 256 px thumbnail), decoded with EXIF orientation respected so portrait phone shots render upright. Photo thumbnails appear in the PDF export; GeoJSON carries a `photoCount` per line but does not embed images.
+9. *As a homeowner, I can export the full property map as PDF, PNG, and GeoJSON so I can send it to a contractor.*
+
+### Design system & branding
+
+- **shadcn/ui** is the UI library. Every interactive UI surface (buttons, inputs, cards, dialogs, tabs, forms, switches, dropdowns, toasts, tooltips) is built from shadcn primitives. Style preset `new-york`, base colour `slate`, CSS variables enabled. No custom button / input components exist unless a shadcn primitive can't express the need.
+- **Dark mode** is a first-class concern. Every color used in the UI comes from shadcn's CSS variables (`bg-background`, `bg-primary`, `text-foreground`, etc.) so both palettes work without per-component changes. Hard-coded Tailwind colour classes are forbidden in UI chrome; they are allowed only for data-semantic colours (e.g. utility-type colours — water = blue, gas = yellow — which are not theme-dependent).
+- **Icons**: `favicon.ico`, `favicon-32.png`, `icon-192.png`, `icon-512.png` live in `public/` and are referenced from `index.html` and the PWA manifest. The PWA manifest is generated by `vite-plugin-pwa` (no separate `site.webmanifest` file) with name `Property Utility Mapper`, short name `Utility Mapper`, theme + background colours keyed off the shadcn palette, and the 192/512 icons as any + maskable purposes.
 
 ### Address invariants
 

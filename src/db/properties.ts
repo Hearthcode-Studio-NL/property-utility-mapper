@@ -1,6 +1,7 @@
 import type { Property, UUID } from '../types';
 import { generateId } from '../lib/ids';
 import { db } from './dexie';
+import { deletePhotosForLineTx } from './photos';
 
 export interface NewPropertyInput {
   street: string;
@@ -72,9 +73,8 @@ export async function deleteProperty(id: UUID): Promise<void> {
     db.klicFiles,
     async () => {
       const lines = await db.utilityLines.where('propertyId').equals(id).toArray();
-      const lineIds = lines.map((l) => l.id);
-      if (lineIds.length > 0) {
-        await db.photos.where('utilityLineId').anyOf(lineIds).delete();
+      for (const line of lines) {
+        await deletePhotosForLineTx(line.id);
       }
       await db.utilityLines.where('propertyId').equals(id).delete();
       await db.klicFiles.where('propertyId').equals(id).delete();
