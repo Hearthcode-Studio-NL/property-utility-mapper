@@ -2,6 +2,7 @@ import { useState, type FormEvent } from 'react';
 import type { UtilityLine, UtilityType } from '@/types';
 import type { UtilityLinePatch } from '@/db/utilityLines';
 import { UTILITY_META, UTILITY_TYPES } from '@/lib/utilityColors';
+import { formatMeters, pathLengthMeters } from '@/lib/distance';
 import { Button } from '@/components/ui/button';
 import {
   Dialog,
@@ -77,20 +78,36 @@ export default function UtilityLineEditor({
           onSubmit={handleFormSubmit}
           className="flex flex-1 flex-col gap-3 overflow-y-auto px-6 py-4"
         >
-          <div className="flex flex-col gap-1.5">
-            <Label htmlFor="type">Type</Label>
-            <Select value={type} onValueChange={(v) => setType(v as UtilityType)}>
-              <SelectTrigger id="type">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {UTILITY_TYPES.map((t) => (
-                  <SelectItem key={t} value={t}>
-                    {UTILITY_META[t].label}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+          <div className="grid grid-cols-2 gap-3">
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="type">Type</Label>
+              <Select value={type} onValueChange={(v) => setType(v as UtilityType)}>
+                <SelectTrigger id="type">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {UTILITY_TYPES.map((t) => (
+                    <SelectItem key={t} value={t}>
+                      {UTILITY_META[t].label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="flex flex-col gap-1.5">
+              {/*
+                Read-only — length is a computed view of line.vertices
+                (haversine sum of adjacent segments). Not a schema field;
+                there's nothing to save.
+              */}
+              <Label>Lengte</Label>
+              <div
+                aria-label="Lengte van de leiding"
+                className="flex h-9 items-center text-sm text-muted-foreground"
+              >
+                {formatMeters(pathLengthMeters(line.vertices))}
+              </div>
+            </div>
           </div>
 
           <div className="grid grid-cols-2 gap-3">

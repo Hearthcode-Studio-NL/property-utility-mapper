@@ -19,8 +19,19 @@ export function pathLengthMeters(points: [number, number][]): number {
   return total;
 }
 
+/**
+ * Dutch-localised distance label. The decimal separator is always a
+ * comma per NL convention.
+ *
+ *   < 1 m     → "X,X m" (one decimal — sub-metre precision is rare but
+ *                valid for a degenerate draft)
+ *   < 1 km    → "N m"   (integer — "234 m" reads more naturally than
+ *                "234,0 m" at everyday ground distances)
+ *   ≥ 1 km    → "X,X km" (one decimal with comma — "1,2 km")
+ */
 export function formatMeters(m: number): string {
-  if (m < 1) return `${m.toFixed(2)} m`;
+  if (!Number.isFinite(m) || m < 0) return '0 m';
+  if (m < 1) return `${m.toFixed(1).replace('.', ',')} m`;
   if (m < 1_000) return `${Math.round(m)} m`;
-  return `${(m / 1_000).toFixed(2)} km`;
+  return `${(m / 1_000).toFixed(1).replace('.', ',')} km`;
 }
