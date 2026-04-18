@@ -14,15 +14,34 @@ describe('useLayerSelection', () => {
     localStorage.clear();
   });
 
-  it('initial state matches catalogue defaults', () => {
+  it('fresh user lands on the v2.1.3 default base (BRT grijs)', () => {
     const { result } = renderHook(() => useLayerSelection(), { wrapper });
 
-    // From layers.ts: OSM is the only base with defaultOn=true;
-    // kadaster-brk and user-drawings have defaultOn=true for overlays.
-    expect(result.current.base).toBe('osm');
+    // From layers.ts: pdok-brt-grijs is the only base with defaultOn=true
+    // after v2.1.3; kadaster-brk and user-drawings are the default overlays.
+    expect(result.current.base).toBe('pdok-brt-grijs');
     expect(Array.from(result.current.overlays).sort()).toEqual(
       ['kadaster-brk', 'user-drawings'].sort(),
     );
+  });
+
+  it('existing user with stored base="osm" is preserved (no forced migration)', () => {
+    // Simulates a v2.1.2 user who had the old OSM default persisted.
+    // v2.1.3 must honour their choice — they don't get silently bounced
+    // onto the new neutral default.
+    localStorage.setItem(
+      STORAGE_KEY,
+      JSON.stringify({
+        base: 'osm',
+        overlays: ['kadaster-brk', 'user-drawings'],
+      }),
+    );
+
+    const { result } = renderHook(() => useLayerSelection(), { wrapper });
+
+    expect(result.current.base).toBe('osm');
+    expect(result.current.overlays.has('kadaster-brk')).toBe(true);
+    expect(result.current.overlays.has('user-drawings')).toBe(true);
   });
 
   it('setBase changes only the base, not the overlays', () => {
@@ -74,7 +93,7 @@ describe('useLayerSelection', () => {
 
     const { result } = renderHook(() => useLayerSelection(), { wrapper });
 
-    expect(result.current.base).toBe('osm');
+    expect(result.current.base).toBe('pdok-brt-grijs');
     expect(result.current.overlays.has('kadaster-brk')).toBe(true);
     expect(result.current.overlays.has('user-drawings')).toBe(true);
   });
@@ -84,11 +103,14 @@ describe('useLayerSelection', () => {
 
     const { result } = renderHook(() => useLayerSelection(), { wrapper });
 
-    expect(result.current.base).toBe('osm');
+    expect(result.current.base).toBe('pdok-brt-grijs');
     expect(result.current.overlays.has('kadaster-brk')).toBe(true);
   });
 
   it('replaces an unknown stored base id with the default and drops unknown overlay ids', () => {
+    // Covers the Phase 2 case: a stored selection that references a base
+    // id no longer in the catalogue (future catalogue pruning, typo, etc.)
+    // falls back to the current default rather than leaving the map blank.
     localStorage.setItem(
       STORAGE_KEY,
       JSON.stringify({
@@ -99,7 +121,7 @@ describe('useLayerSelection', () => {
 
     const { result } = renderHook(() => useLayerSelection(), { wrapper });
 
-    expect(result.current.base).toBe('osm');
+    expect(result.current.base).toBe('pdok-brt-grijs');
     expect(result.current.overlays.has('kadaster-brk')).toBe(true);
     expect(result.current.overlays.has('user-drawings')).toBe(true);
     // The unknown overlay id is silently dropped — assert via a runtime
@@ -128,7 +150,7 @@ describe('useLayerSelection', () => {
 
     act(() => result.current.resetToDefaults());
 
-    expect(result.current.base).toBe('osm');
+    expect(result.current.base).toBe('pdok-brt-grijs');
     expect(Array.from(result.current.overlays).sort()).toEqual(
       ['kadaster-brk', 'user-drawings'].sort(),
     );

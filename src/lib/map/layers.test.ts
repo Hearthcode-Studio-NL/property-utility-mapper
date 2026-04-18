@@ -40,9 +40,36 @@ describe('layer catalogue', () => {
 
   it('findLayer returns the right entry by id and undefined for unknown ids', () => {
     expect(findLayer('osm')?.kind).toBe('base');
+    expect(findLayer('pdok-brt-grijs')?.kind).toBe('base');
     expect(findLayer('kadaster-brk')?.kind).toBe('overlay');
     expect(findLayer('user-drawings')?.kind).toBe('virtual-overlay');
     expect(findLayer('does-not-exist')).toBeUndefined();
+  });
+
+  describe('pdok-brt-grijs (neutral greyscale topographic base, v2.1.3 default)', () => {
+    const grijs = findLayer('pdok-brt-grijs');
+
+    it('is a base layer', () => {
+      expect(grijs).toBeDefined();
+      expect(grijs?.kind).toBe('base');
+    });
+
+    it('is the default base from v2.1.3 on', () => {
+      expect(grijs?.defaultOn).toBe(true);
+    });
+
+    it('points at the PDOK BRT-Achtergrondkaart WMTS REST endpoint (grijs, EPSG:3857)', () => {
+      expect(grijs?.tileUrl).toMatch(
+        /^https:\/\/service\.pdok\.nl\/brt\/achtergrondkaart\/wmts\/v2_0\/grijs\/EPSG:3857\//,
+      );
+      // No wmsLayerName — WMTS REST is served as XYZ by <TileLayer>.
+      expect(grijs?.wmsLayerName).toBeUndefined();
+    });
+
+    it('attributes the Kadaster BRT-Achtergrondkaart data source', () => {
+      expect(grijs?.attribution).toMatch(/Kadaster/);
+      expect(grijs?.attribution).toMatch(/BRT/);
+    });
   });
 
   describe('pdok-luchtfoto-hr (PDOK Actueel_orthoHR, 8 cm)', () => {
@@ -65,7 +92,7 @@ describe('layer catalogue', () => {
       expect(hr?.wmsLayerName).toBe('Actueel_orthoHR');
     });
 
-    it('is not defaultOn (OSM remains the default base)', () => {
+    it('is not defaultOn', () => {
       expect(hr?.defaultOn).not.toBe(true);
     });
   });
@@ -81,6 +108,7 @@ describe('layer catalogue', () => {
    */
   describe('derived types', () => {
     it('BaseLayerId is the union of every base-entry id', () => {
+      const grijs: BaseLayerId = 'pdok-brt-grijs';
       const osm: BaseLayerId = 'osm';
       const luchtfoto: BaseLayerId = 'pdok-luchtfoto';
       const luchtfotoHr: BaseLayerId = 'pdok-luchtfoto-hr';
@@ -89,7 +117,7 @@ describe('layer catalogue', () => {
       // @ts-expect-error — unknown ids must not be assignable to BaseLayerId
       const bogus: BaseLayerId = 'made-up';
 
-      expect([osm, luchtfoto, luchtfotoHr, kadaster, bogus]).toHaveLength(5);
+      expect([grijs, osm, luchtfoto, luchtfotoHr, kadaster, bogus]).toHaveLength(6);
     });
 
     it('OverlayId is the union of every overlay + virtual-overlay id', () => {

@@ -13,15 +13,34 @@ import type { LayerEntry } from '@/types/map';
  */
 export const LAYERS = [
   {
-    id: 'osm',
+    // PDOK BRT-Achtergrondkaart, greyscale ("grijs") variant. Neutral topo
+    // basemap, nationwide NL coverage, derived from TOP10NL. Serves as the
+    // default backdrop from v2.1.3 on because its low chroma lets coloured
+    // utility lines read cleanly on top. WMTS REST — the path template
+    // `/grijs/EPSG:3857/{TileMatrix}/{TileCol}/{TileRow}.png` maps 1:1 onto
+    // Leaflet's `{z}/{x}/{y}` tokens so a plain <TileLayer> consumes it.
+    // Verified against GetCapabilities: no fees, no access constraints.
+    id: 'pdok-brt-grijs',
     kind: 'base',
     labelNl: 'Kaart',
+    attribution:
+      'Kaartgegevens &copy; <a href="https://www.kadaster.nl">Kadaster</a> (BRT-Achtergrondkaart)',
+    tileUrl:
+      'https://service.pdok.nl/brt/achtergrondkaart/wmts/v2_0/grijs/EPSG:3857/{z}/{x}/{y}.png',
+    maxNativeZoom: 19,
+    maxZoom: 22,
+    defaultOn: true,
+  },
+  {
+    id: 'osm',
+    kind: 'base',
+    labelNl: 'OpenStreetMap',
     attribution:
       '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>-bijdragers',
     tileUrl: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
     maxNativeZoom: 19,
     maxZoom: 22,
-    defaultOn: true,
+    defaultOn: false,
   },
   {
     // PDOK Luchtfoto Actueel Ortho 25 cm, via WMS.

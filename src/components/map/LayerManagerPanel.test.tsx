@@ -117,7 +117,7 @@ describe('LayerManagerPanel', () => {
     // on focus is a Radix behaviour detail; what we're guaranteeing here
     // is that keyboard users can reach every option without the mouse.
     await user.keyboard('{ArrowDown}');
-    expect(screen.getByRole('radio', { name: 'Satelliet' })).toHaveFocus();
+    expect(screen.getByRole('radio', { name: 'OpenStreetMap' })).toHaveFocus();
   });
 
   it('toggles a checkbox via the keyboard (Space)', async () => {
