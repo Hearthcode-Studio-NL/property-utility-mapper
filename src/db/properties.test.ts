@@ -4,13 +4,14 @@ import {
   addProperty,
   CoverPhotoNotFoundError,
   deleteProperty,
+  duplicateProperty,
   getProperty,
   listProperties,
   PropertyValidationError,
   updateProperty,
   type NewPropertyInput,
 } from './properties';
-import { addUtilityLine } from './utilityLines';
+import { addUtilityLine, listLinesForProperty } from './utilityLines';
 import type { Photo } from '../types';
 
 function makeInput(overrides: Partial<NewPropertyInput> = {}): NewPropertyInput {
@@ -316,5 +317,172 @@ describe('db/properties', () => {
     expect(await db.properties.toArray()).toHaveLength(1);
     expect(await db.utilityLines.toArray()).toHaveLength(1);
     expect(await db.photos.toArray()).toHaveLength(1);
+  });
+
+  describe('duplicateProperty', () => {
+    it('creates a new property with a new id, fresh timestamps, and the supplied fullAddress label', async () => {
+      const source = await addProperty(makeInput({ street: 'Original' }));
+      await new Promise((r) => setTimeout(r, 2));
+
+      const copy = await duplicateProperty(source.id, 'Copied label (kopie)');
+
+      expect(copy.id).not.toBe(source.id);
+      expect(copy.id).toMatch(/^[0-9a-f-]{36}$/);
+      expect(copy.fullAddress).toBe('Copied label (kopie)');
+      expect(copy.createdAt > source.createdAt).toBe(true);
+      expect(copy.updatedAt).toBe(copy.createdAt);
+      // Structured fields + coords carry over from the source — the
+      // single-field dialog only sets fullAddress. (See the v2.2.2
+      // commit message + CLAUDE.md for the trade-off.)
+      expect(copy.street).toBe(source.street);
+      expect(copy.houseNumber).toBe(source.houseNumber);
+      expect(copy.city).toBe(source.city);
+      expect(copy.centerLat).toBe(source.centerLat);
+      expect(copy.centerLng).toBe(source.centerLng);
+    });
+
+    it('clones every utility line with a NEW id and the new property as parent', async () => {
+      const source = await addProperty(makeInput({ street: 'WithLines' }));
+      const line1 = await addUtilityLine({
+        propertyId: source.id,
+        type: 'water',
+        vertices: [
+          [1, 2],
+          [1.1, 2.1],
+        ],
+      });
+      const line2 = await addUtilityLine({
+        propertyId: source.id,
+        type: 'gas',
+        vertices: [
+          [3, 4],
+          [3.1, 4.1],
+        ],
+      });
+
+      const copy = await duplicateProperty(source.id, 'Nieuwe straat 99');
+      const clonedLines = await listLinesForProperty(copy.id);
+
+      expect(clonedLines).toHaveLength(2);
+      // Every cloned line has a fresh id + points at the new property.
+      for (const cl of clonedLines) {
+        expect(cl.id).not.toBe(line1.id);
+        expect(cl.id).not.toBe(line2.id);
+        expect(cl.propertyId).toBe(copy.id);
+        expect(cl.photoIds).toEqual([]);
+      }
+      // Geometry + type + attributes preserved across the clone.
+      const originalTypes = [line1.type, line2.type].sort();
+      const clonedTypes = clonedLines.map((l) => l.type).sort();
+      expect(clonedTypes).toEqual(originalTypes);
+
+      // Original's lines still untouched.
+      const originalLines = await listLinesForProperty(source.id);
+      expect(originalLines.map((l) => l.id).sort()).toEqual(
+        [line1.id, line2.id].sort(),
+      );
+    });
+
+    it('does NOT copy photos — photo table count is unchanged after duplicate', async () => {
+      const source = await addProperty(makeInput({ street: 'WithPhotos' }));
+      const line = await addUtilityLine({
+        propertyId: source.id,
+        type: 'water',
+        vertices: [
+          [1, 2],
+          [1.1, 2.1],
+        ],
+      });
+      const photo: Photo = {
+        id: 'photo-only-on-original',
+        lineId: line.id,
+        blob: new Blob(['raw']),
+        thumbnailBlob: new Blob(['thumb']),
+        mimeType: 'image/jpeg',
+        createdAt: new Date().toISOString(),
+      };
+      await db.photos.add(photo);
+      await db.utilityLines.update(line.id, { photoIds: [photo.id] });
+
+      const photoCountBefore = await db.photos.count();
+      await duplicateProperty(source.id, 'Geen fotos hier (kopie)');
+      expect(await db.photos.count()).toBe(photoCountBefore);
+
+      // Photo stays bound to the ORIGINAL line, not the cloned one.
+      const remaining = await db.photos.toArray();
+      expect(remaining).toHaveLength(1);
+      expect(remaining[0]?.lineId).toBe(line.id);
+    });
+
+    it('resets notes and coverPhotoId on the new property', async () => {
+      const source = await addProperty(makeInput({ street: 'Memorable' }));
+      // Seed source notes + a cover (via direct writes — update() bypasses
+      // the coverPhotoId validation so we can exercise a "had a cover"
+      // source without needing a whole line + photo for this test).
+      await db.properties.update(source.id, {
+        notes: 'Sleutel achter de vuilnisbak',
+        coverPhotoId: 'some-photo-id-on-source',
+      });
+
+      const copy = await duplicateProperty(source.id, 'Tweede locatie');
+
+      expect(copy.notes).toBeNull();
+      expect(copy.coverPhotoId).toBeNull();
+    });
+
+    it('rejects an empty or whitespace-only label and persists nothing', async () => {
+      const source = await addProperty(makeInput({ street: 'NoEmpty' }));
+      const beforePropertyCount = (await db.properties.toArray()).length;
+      const beforeLineCount = (await db.utilityLines.toArray()).length;
+
+      await expect(duplicateProperty(source.id, '')).rejects.toBeInstanceOf(
+        PropertyValidationError,
+      );
+      await expect(duplicateProperty(source.id, '   ')).rejects.toBeInstanceOf(
+        PropertyValidationError,
+      );
+
+      expect((await db.properties.toArray()).length).toBe(beforePropertyCount);
+      expect((await db.utilityLines.toArray()).length).toBe(beforeLineCount);
+    });
+
+    it('throws if the source property does not exist', async () => {
+      await expect(
+        duplicateProperty('does-not-exist', 'Foo (kopie)'),
+      ).rejects.toThrow(/not found/i);
+    });
+
+    it('rolls the whole transaction back if a line insert fails — no orphan property', async () => {
+      const source = await addProperty(makeInput({ street: 'RollsBack' }));
+      await addUtilityLine({
+        propertyId: source.id,
+        type: 'water',
+        vertices: [
+          [1, 2],
+          [1.1, 2.1],
+        ],
+      });
+
+      const propertiesBefore = await db.properties.toArray();
+      const linesBefore = await db.utilityLines.toArray();
+
+      // Sabotage: make the NEXT utilityLines.add() throw. duplicateProperty
+      // will have inserted the new property row by then; Dexie must roll
+      // that back alongside the failed line insert.
+      const addSpy = vi
+        .spyOn(db.utilityLines, 'add')
+        .mockImplementationOnce(() => {
+          throw new Error('Simulated add failure');
+        });
+
+      await expect(
+        duplicateProperty(source.id, 'Nooit opgeslagen'),
+      ).rejects.toThrow(/Simulated add failure/);
+      addSpy.mockRestore();
+
+      // Nothing orphaned — property + line tables match the pre-call snapshot.
+      expect(await db.properties.toArray()).toEqual(propertiesBefore);
+      expect(await db.utilityLines.toArray()).toEqual(linesBefore);
+    });
   });
 });

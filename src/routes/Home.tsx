@@ -9,6 +9,7 @@ import { formatDisplayAddress } from '@/lib/address';
 import { useInstallPrompt } from '@/hooks/useInstallPrompt';
 import AddPropertyPanel from '@/components/AddPropertyPanel';
 import DeletePropertyDialog from '@/components/DeletePropertyDialog';
+import DuplicatePropertyDialog from '@/components/DuplicatePropertyDialog';
 import { ModeToggle } from '@/components/mode-toggle';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
@@ -20,6 +21,9 @@ export default function Home() {
 
   const [importing, setImporting] = useState(false);
   const [pendingDeleteId, setPendingDeleteId] = useState<string | null>(null);
+  const [pendingDuplicateId, setPendingDuplicateId] = useState<string | null>(
+    null,
+  );
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const pendingDeleteProperty = useMemo(
@@ -28,6 +32,13 @@ export default function Home() {
         ? (properties?.find((p) => p.id === pendingDeleteId) ?? null)
         : null,
     [pendingDeleteId, properties],
+  );
+  const pendingDuplicateProperty = useMemo(
+    () =>
+      pendingDuplicateId
+        ? (properties?.find((p) => p.id === pendingDuplicateId) ?? null)
+        : null,
+    [pendingDuplicateId, properties],
   );
 
   async function handleImportChange(e: ChangeEvent<HTMLInputElement>) {
@@ -111,6 +122,14 @@ export default function Home() {
                     <Button
                       variant="ghost"
                       size="sm"
+                      onClick={() => setPendingDuplicateId(p.id)}
+                      aria-label={`${formatDisplayAddress(p)} dupliceren`}
+                    >
+                      Dupliceer
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="sm"
                       className="text-destructive hover:bg-destructive/10 hover:text-destructive"
                       onClick={() => setPendingDeleteId(p.id)}
                       aria-label={`${formatDisplayAddress(p)} verwijderen`}
@@ -132,6 +151,17 @@ export default function Home() {
           onOpenChange={(next) => {
             if (!next) setPendingDeleteId(null);
           }}
+        />
+      )}
+
+      {pendingDuplicateProperty && (
+        <DuplicatePropertyDialog
+          property={pendingDuplicateProperty}
+          open={pendingDuplicateId !== null}
+          onOpenChange={(next) => {
+            if (!next) setPendingDuplicateId(null);
+          }}
+          onDuplicated={(newId) => navigate(`/property/${newId}`)}
         />
       )}
     </main>

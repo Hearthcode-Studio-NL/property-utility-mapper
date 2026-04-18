@@ -1,4 +1,4 @@
-import type { Property, UUID } from '../types';
+import type { Property, UtilityLine, UUID } from '../types';
 import { generateId } from '../lib/ids';
 import { db } from './dexie';
 import { deletePhotosForLineTx } from './photos';
@@ -114,6 +114,89 @@ export async function updateProperty(
     await db.properties.put(updated);
     return updated;
   });
+}
+
+/**
+ * Clone a property into a new row, carrying its utility lines forward
+ * with freshly-generated ids. DELIBERATELY not cloned (v2.2.2 scope):
+ *
+ *   - photos: they belong to the original's lines; cloning would
+ *     double-store every blob. Cloned lines start with `photoIds: []`.
+ *   - notes (property-level): the new property begins blank so the
+ *     user is nudged to describe this specific address.
+ *   - coverPhotoId: it references a photo on the original — following
+ *     that link across the clone would leak photos between properties.
+ *
+ * Line-level attributes (type, vertices, depthCm, material, diameterMm,
+ * installDate, notes) DO carry over — they describe the physical utility
+ * geometry, which is what a user "dupliceer" usually wants to keep.
+ *
+ * The single `fullAddressLabel` string becomes the new property's
+ * `fullAddress`. Structured fields (street, houseNumber, city, postcode,
+ * country) and coordinates are copied from the source as-is. See the
+ * v2.2.2 commit message / CLAUDE.md for the trade-off.
+ */
+export async function duplicateProperty(
+  sourceId: UUID,
+  fullAddressLabel: string,
+): Promise<Property> {
+  const trimmed = fullAddressLabel.trim();
+  if (trimmed.length === 0) {
+    throw new PropertyValidationError('Adres is verplicht.');
+  }
+  return db.transaction(
+    'rw',
+    db.properties,
+    db.utilityLines,
+    async (): Promise<Property> => {
+      const source = await db.properties.get(sourceId);
+      if (!source) {
+        throw new Error(`Property ${sourceId} not found.`);
+      }
+      const sourceLines = await db.utilityLines
+        .where('propertyId')
+        .equals(sourceId)
+        .toArray();
+
+      const now = new Date().toISOString();
+      const cloned: Property = {
+        id: generateId(),
+        street: source.street,
+        houseNumber: source.houseNumber,
+        city: source.city,
+        postcode: source.postcode,
+        country: source.country,
+        fullAddress: trimmed,
+        centerLat: source.centerLat,
+        centerLng: source.centerLng,
+        notes: null,
+        coverPhotoId: null,
+        createdAt: now,
+        updatedAt: now,
+      };
+      await db.properties.add(cloned);
+
+      for (const line of sourceLines) {
+        const clonedLine: UtilityLine = {
+          id: generateId(),
+          propertyId: cloned.id,
+          type: line.type,
+          vertices: line.vertices.map(([lat, lng]) => [lat, lng]),
+          depthCm: line.depthCm,
+          material: line.material,
+          diameterMm: line.diameterMm,
+          installDate: line.installDate,
+          notes: line.notes,
+          photoIds: [],
+          createdAt: now,
+          updatedAt: now,
+        };
+        await db.utilityLines.add(clonedLine);
+      }
+
+      return cloned;
+    },
+  );
 }
 
 export function getProperty(id: UUID): Promise<Property | undefined> {

@@ -5,6 +5,7 @@ import { MemoryRouter, Route, Routes, useParams } from 'react-router-dom';
 import Home from './Home';
 import { db } from '../db/dexie';
 import { addProperty } from '../db/properties';
+import { addUtilityLine } from '../db/utilityLines';
 import * as geocode from '../lib/geocode';
 import { toast } from 'sonner';
 
@@ -229,5 +230,107 @@ describe('Home', () => {
 
     const target = await screen.findByTestId('property-page');
     expect(target).toHaveTextContent(`property ${created.id}`);
+  });
+
+  it('duplicating a property: opens a dialog with the "(kopie)" suffix pre-filled', async () => {
+    await addProperty({
+      street: 'Oudegracht',
+      houseNumber: '12',
+      city: 'Utrecht',
+      fullAddress: 'Oudegracht 12, 3511 AH Utrecht, Nederland',
+      centerLat: 52.09,
+      centerLng: 5.12,
+    });
+
+    const user = userEvent.setup();
+    renderApp();
+
+    await user.click(
+      await screen.findByRole('button', {
+        name: /Oudegracht 12, Utrecht dupliceren/i,
+      }),
+    );
+
+    expect(
+      screen.getByRole('heading', { name: /Adres dupliceren/ }),
+    ).toBeInTheDocument();
+    const input = screen.getByLabelText<HTMLInputElement>('Adres');
+    expect(input).toHaveValue('Oudegracht 12, Utrecht (kopie)');
+
+    // Annuleren closes without doing anything.
+    await user.click(screen.getByRole('button', { name: /Annuleren/ }));
+    expect(await db.properties.toArray()).toHaveLength(1);
+    expect(toast.success).not.toHaveBeenCalled();
+  });
+
+  it('duplicating a property: confirms creates a new property, carries lines, skips photos, and navigates', async () => {
+    const source = await addProperty({
+      street: 'Singel',
+      houseNumber: '42',
+      city: 'Amsterdam',
+      fullAddress: 'Singel 42, Amsterdam, Nederland',
+      centerLat: 52.37,
+      centerLng: 4.89,
+    });
+    // Seed a line + a photo on the source. The clone must carry the
+    // line but NOT the photo.
+    const line = await addUtilityLine({
+      propertyId: source.id,
+      type: 'water',
+      vertices: [
+        [1, 2],
+        [1.1, 2.1],
+      ],
+    });
+    await db.photos.add({
+      id: 'source-photo',
+      lineId: line.id,
+      blob: new Blob(['b']),
+      thumbnailBlob: new Blob(['t']),
+      mimeType: 'image/jpeg',
+      createdAt: new Date().toISOString(),
+    });
+    await db.utilityLines.update(line.id, { photoIds: ['source-photo'] });
+
+    const user = userEvent.setup();
+    renderApp();
+
+    await user.click(
+      await screen.findByRole('button', {
+        name: /Singel 42, Amsterdam dupliceren/i,
+      }),
+    );
+
+    const input = screen.getByLabelText<HTMLInputElement>('Adres');
+    await user.clear(input);
+    await user.type(input, 'Singel 44, Amsterdam');
+    await user.click(screen.getByRole('button', { name: /Dupliceer$/ }));
+
+    // Success toast + navigation to the NEW property's page.
+    await waitFor(() => {
+      expect(toast.success).toHaveBeenCalledWith('Adres gedupliceerd');
+    });
+    const target = await screen.findByTestId('property-page');
+    const match = target.textContent?.match(/property ([0-9a-f-]{36})/);
+    expect(match).not.toBeNull();
+    const newId = match![1];
+    expect(newId).not.toBe(source.id);
+
+    // DB reflects a fresh copy — 2 properties, 2 lines (one per property),
+    // still exactly 1 photo (bound to the source's line).
+    const props = await db.properties.toArray();
+    expect(props).toHaveLength(2);
+    const copy = props.find((p) => p.id === newId)!;
+    expect(copy.fullAddress).toBe('Singel 44, Amsterdam');
+    expect(copy.notes).toBeNull();
+    expect(copy.coverPhotoId).toBeNull();
+
+    const lines = await db.utilityLines.toArray();
+    expect(lines).toHaveLength(2);
+    expect(lines.filter((l) => l.propertyId === newId)).toHaveLength(1);
+
+    const photos = await db.photos.toArray();
+    expect(photos).toHaveLength(1);
+    expect(photos[0]?.lineId).toBe(line.id); // still bound to the original
   });
 });
