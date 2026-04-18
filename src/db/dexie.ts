@@ -1,3 +1,22 @@
+/**
+ * Dexie migrations
+ *
+ * Every schema state the app has ever shipped is a `.version(N).stores(...)`
+ * below, with a `.upgrade(...)` whenever N requires row transformation.
+ *
+ * To evolve the schema:
+ *   1. ADD `.version(N+1).stores({...}).upgrade(tx => {...})` at the bottom.
+ *   2. NEVER edit or remove existing `.version(N)` calls — users on any
+ *      prior version step through every `.upgrade` in order on next load.
+ *   3. Transforms run inside Dexie's implicit transaction; throws roll back.
+ *      Keep them fast and data-safe.
+ *
+ * The v2 upgrade was originally a wipe because the structured-address
+ * refactor couldn't reliably split the old single `address` string without
+ * a Nominatim round-trip. As of v2.1.6 it's a best-effort migration that
+ * preserves what it can — see the v2 upgrade fn for the parse heuristic and
+ * fallbacks.
+ */
 import Dexie, { type Table } from 'dexie';
 import type { KlicFile, Photo, Property, UtilityLine } from '../types';
 
@@ -19,10 +38,20 @@ class PropertyUtilityMapperDB extends Dexie {
       klicFiles: 'id, propertyId, uploadedAt',
     });
 
-    // v2 — structured address. The old `address` / `lat` / `lng` fields
-    // couldn't be reliably split without a network round-trip, so we wiped
-    // pre-v2 records on upgrade (v1 had no user-visible features worth
-    // preserving). See ARCHITECTURE.md "Open questions".
+    // v2 — structured address. Splits the old `address` string into
+    // `street`, `houseNumber`, `city`, `fullAddress`; renames `lat`/`lng`
+    // to `centerLat`/`centerLng`. Child tables (utilityLines, photos,
+    // klicFiles) don't change shape at v1→v2, so their rows pass through
+    // untouched — Dexie rebuilds the properties index from `address`
+    // to `city` automatically.
+    //
+    // The parse is best-effort against Nominatim's display_name shape:
+    //   "Herengracht 1A, 1015 BA Amsterdam, Noord-Holland, Nederland"
+    // When the parse fails, `fullAddress` still holds the original string
+    // and `street` falls back to it, so `formatDisplayAddress()` always
+    // has something non-empty to show. `houseNumber` / `city` may end up
+    // blank on unparseable rows; addProperty() rejects those at save time,
+    // but migrated records aren't re-saved — the user can delete + recreate.
     this.version(2)
       .stores({
         properties: 'id, city, createdAt',
@@ -31,10 +60,29 @@ class PropertyUtilityMapperDB extends Dexie {
         klicFiles: 'id, propertyId, uploadedAt',
       })
       .upgrade(async (tx) => {
-        await tx.table('properties').clear();
-        await tx.table('utilityLines').clear();
-        await tx.table('photos').clear();
-        await tx.table('klicFiles').clear();
+        await tx
+          .table('properties')
+          .toCollection()
+          .modify((p) => {
+            const old = p as {
+              address?: string;
+              lat?: number;
+              lng?: number;
+            };
+            const addr = (old.address ?? '').trim();
+            const match = addr.match(
+              /^(.+?)\s+(\d+\S*),\s*(?:\d{4}\s?[A-Z]{2}\s+)?([^,]+)/,
+            );
+            p.street = match?.[1]?.trim() || addr || '(Onbekende straat)';
+            p.houseNumber = match?.[2]?.trim() || '';
+            p.city = match?.[3]?.trim() || '';
+            p.fullAddress = addr;
+            p.centerLat = old.lat ?? 0;
+            p.centerLng = old.lng ?? 0;
+            delete (p as Record<string, unknown>).address;
+            delete (p as Record<string, unknown>).lat;
+            delete (p as Record<string, unknown>).lng;
+          });
       });
 
     // v3 — photos. Renames photos.utilityLineId -> photos.lineId (index
