@@ -215,7 +215,11 @@ export default function UtilityLineEditor({
           <div className="flex flex-col gap-2">
             <div className="flex items-center justify-between">
               <Label>Foto's</Label>
-              <PhotoUploader lineId={line.id} photoCount={line.photoIds?.length ?? 0} />
+              <PhotoUploader
+                lineId={line.id}
+                photoCount={line.photoIds?.length ?? 0}
+                color={UTILITY_META[type].color}
+              />
             </div>
             <PhotoGrid lineId={line.id} />
           </div>

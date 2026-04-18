@@ -17,8 +17,13 @@ import {
 } from '@/components/ui/dialog';
 import { Label } from '@/components/ui/label';
 import { Separator } from '@/components/ui/separator';
+import PhotoAnnotator from './PhotoAnnotator';
 import { NON_IMAGE_MESSAGE } from './PhotoUploader';
 import { cn } from '@/lib/utils';
+
+/** Slate-600. Neutral default annotation colour for cover photos,
+ *  per the v2.3.4 spec ("neutral slate for cover photos"). */
+const COVER_ANNOTATION_COLOR = '#475569';
 
 interface Props {
   property: Property;
@@ -86,8 +91,15 @@ export default function CoverPhotoPickerDialog({
 
   const inputRef = useRef<HTMLInputElement>(null);
   const [uploading, setUploading] = useState(false);
+  /**
+   * v2.3.4: after the file picker returns, we open the annotator
+   * before calling addPropertyPhoto. pendingFile holds the chosen
+   * image while the annotator is open; the save runs in
+   * handleAnnotationDone with the annotated (or original) File.
+   */
+  const [pendingFile, setPendingFile] = useState<File | null>(null);
 
-  async function handleUploadChange(e: ChangeEvent<HTMLInputElement>) {
+  function handleUploadChange(e: ChangeEvent<HTMLInputElement>) {
     const files = Array.from(e.target.files ?? []);
     e.target.value = '';
     if (files.length === 0) return; // picker cancelled — silent no-op
@@ -97,10 +109,14 @@ export default function CoverPhotoPickerDialog({
       toast.error(NON_IMAGE_MESSAGE);
       return;
     }
+    setPendingFile(file);
+  }
 
+  async function handleAnnotationDone(result: File) {
     setUploading(true);
+    setPendingFile(null);
     try {
-      const photo = await addPropertyPhoto(property.id, file);
+      const photo = await addPropertyPhoto(property.id, result);
       setSelectedId(photo.id);
       toast.success(
         'Foto geüpload. Klik "Kies" om als coverfoto in te stellen.',
@@ -112,6 +128,10 @@ export default function CoverPhotoPickerDialog({
     } finally {
       setUploading(false);
     }
+  }
+
+  function handleAnnotationCancel() {
+    setPendingFile(null);
   }
 
   async function handleSave() {
@@ -227,6 +247,16 @@ export default function CoverPhotoPickerDialog({
           </div>
         </DialogFooter>
       </DialogContent>
+
+      <PhotoAnnotator
+        open={pendingFile !== null}
+        file={pendingFile}
+        color={COVER_ANNOTATION_COLOR}
+        onOpenChange={(next) => {
+          if (!next) handleAnnotationCancel();
+        }}
+        onDone={handleAnnotationDone}
+      />
     </Dialog>
   );
 }

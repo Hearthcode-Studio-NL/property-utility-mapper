@@ -3,11 +3,18 @@ import { Camera, Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
 
 import { addPhoto, MAX_PHOTOS_PER_LINE, PhotoLimitError } from '@/db/photos';
+import PhotoAnnotator from './PhotoAnnotator';
 import { Button } from '@/components/ui/button';
 
 interface PhotoUploaderProps {
   lineId: string;
   photoCount: number;
+  /**
+   * Annotation stroke colour (v2.3.4). Line photos use the owning
+   * line's utility-type colour so arrows/circles match what's drawn
+   * on the map; callers pass it through.
+   */
+  color: string;
 }
 
 export const NON_IMAGE_MESSAGE = 'Alleen afbeeldingen worden ondersteund.';
@@ -26,14 +33,24 @@ export const NON_IMAGE_MESSAGE = 'Alleen afbeeldingen worden ondersteund.';
  * platforms, so we also gate on MIME in the handler and fire a Dutch
  * error toast for non-images rather than letting the resize pipeline
  * throw opaquely.
+ *
+ * v2.3.4: each picked image enters an annotation queue. The annotator
+ * dialog shows them one at a time; Bewaar / Overslaan advance the
+ * queue, dismiss drops the rest.
  */
-export default function PhotoUploader({ lineId, photoCount }: PhotoUploaderProps) {
+export default function PhotoUploader({
+  lineId,
+  photoCount,
+  color,
+}: PhotoUploaderProps) {
   const [busy, setBusy] = useState(false);
+  const [queue, setQueue] = useState<File[]>([]);
   const inputRef = useRef<HTMLInputElement>(null);
 
   const atLimit = photoCount >= MAX_PHOTOS_PER_LINE;
+  const current = queue[0] ?? null;
 
-  async function handleChange(e: ChangeEvent<HTMLInputElement>) {
+  function handleChange(e: ChangeEvent<HTMLInputElement>) {
     const files = Array.from(e.target.files ?? []);
     e.target.value = '';
     if (files.length === 0) return; // picker cancelled — silent no-op
@@ -44,40 +61,52 @@ export default function PhotoUploader({ lineId, photoCount }: PhotoUploaderProps
       if (f.type.startsWith('image/')) images.push(f);
       else rejected += 1;
     }
-    if (rejected > 0) {
-      toast.error(NON_IMAGE_MESSAGE);
-    }
+    if (rejected > 0) toast.error(NON_IMAGE_MESSAGE);
     if (images.length === 0) return;
 
+    // Respect the per-line limit before queueing — no point annotating a
+    // file that will just fail at save time.
+    const headroom = Math.max(0, MAX_PHOTOS_PER_LINE - photoCount);
+    if (headroom === 0) {
+      toast.error(`Maximaal ${MAX_PHOTOS_PER_LINE} foto's per lijn.`);
+      return;
+    }
+    const accepted = images.slice(0, headroom);
+    const dropped = images.length - accepted.length;
+    if (dropped > 0) {
+      toast.error(`Maximaal ${MAX_PHOTOS_PER_LINE} foto's per lijn.`);
+    }
+    setQueue(accepted);
+  }
+
+  async function saveAndAdvance(file: File) {
     setBusy(true);
-    let added = 0;
-    let hitLimit = false;
     try {
-      for (const file of images) {
-        try {
-          await addPhoto(lineId, file);
-          added += 1;
-        } catch (err) {
-          if (err instanceof PhotoLimitError) {
-            hitLimit = true;
-            break;
-          }
-          toast.error(
-            err instanceof Error ? err.message : 'Foto kon niet worden opgeslagen.',
-          );
-        }
+      await addPhoto(lineId, file);
+      toast.success('Foto toegevoegd.');
+    } catch (err) {
+      if (err instanceof PhotoLimitError) {
+        toast.error(err.message);
+      } else {
+        toast.error(
+          err instanceof Error ? err.message : 'Foto kon niet worden opgeslagen.',
+        );
       }
     } finally {
       setBusy(false);
+      setQueue((q) => q.slice(1));
     }
+  }
 
-    if (hitLimit) {
-      toast.error(`Maximaal ${MAX_PHOTOS_PER_LINE} foto's per lijn.`);
-    } else if (added > 0) {
-      toast.success(
-        added === 1 ? 'Foto toegevoegd.' : `${added} foto's toegevoegd.`,
-      );
-    }
+  function handleAnnotationDone(result: File) {
+    void saveAndAdvance(result);
+  }
+
+  function handleAnnotationCancel() {
+    // Explicit dismiss = user backed out of the whole batch. Anything
+    // already saved (prior files in the queue) stays; remaining files
+    // are abandoned. Bewaar / Overslaan advance one at a time instead.
+    setQueue([]);
   }
 
   return (
@@ -86,7 +115,7 @@ export default function PhotoUploader({ lineId, photoCount }: PhotoUploaderProps
         type="button"
         variant="outline"
         size="sm"
-        disabled={busy || atLimit}
+        disabled={busy || atLimit || queue.length > 0}
         onClick={() => inputRef.current?.click()}
       >
         {busy ? (
@@ -106,6 +135,15 @@ export default function PhotoUploader({ lineId, photoCount }: PhotoUploaderProps
         multiple
         className="hidden"
         onChange={handleChange}
+      />
+      <PhotoAnnotator
+        open={current !== null}
+        file={current}
+        color={color}
+        onOpenChange={(next) => {
+          if (!next) handleAnnotationCancel();
+        }}
+        onDone={handleAnnotationDone}
       />
     </div>
   );

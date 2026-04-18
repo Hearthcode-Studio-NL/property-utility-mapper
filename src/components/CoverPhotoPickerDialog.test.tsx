@@ -31,6 +31,32 @@ vi.mock('sonner', () => ({
   toast: { error: vi.fn(), success: vi.fn() },
 }));
 
+// Stub the annotator so we can exercise the cover picker's upload
+// handoff without depending on canvas / createImageBitmap in jsdom.
+vi.mock('./PhotoAnnotator', () => ({
+  default: ({
+    open,
+    file,
+    onDone,
+    onOpenChange,
+  }: {
+    open: boolean;
+    file: File | null;
+    onDone: (result: File) => void;
+    onOpenChange: (next: boolean) => void;
+  }) =>
+    open && file ? (
+      <div data-testid="annotator-stub">
+        <button type="button" onClick={() => onDone(file)}>
+          stub-done
+        </button>
+        <button type="button" onClick={() => onOpenChange(false)}>
+          stub-cancel
+        </button>
+      </div>
+    ) : null,
+}));
+
 function stubObjectUrl() {
   let counter = 0;
   URL.createObjectURL = () => {
@@ -114,7 +140,7 @@ describe('CoverPhotoPickerDialog — upload flow (v2.3.2)', () => {
     expect(input?.hasAttribute('capture')).toBe(false);
   });
 
-  it('uploading a valid image calls addPropertyPhoto and auto-selects the new photo as cover', async () => {
+  it('uploading a valid image opens the annotator, then Bewaar flows through to addPropertyPhoto', async () => {
     const property = await seedProperty();
 
     const mod = await import('@/db/photos');
@@ -135,12 +161,48 @@ describe('CoverPhotoPickerDialog — upload flow (v2.3.2)', () => {
     const img = new File(['x'], 'cover.jpg', { type: 'image/jpeg' });
     fireEvent.change(input!, { target: { files: [img] } });
 
+    // v2.3.4: the annotator opens before addPropertyPhoto is called.
+    await screen.findByTestId('annotator-stub');
+    expect(addSpy).not.toHaveBeenCalled();
+
+    // Bewaar (stub) advances the flow.
+    fireEvent.click(screen.getByText('stub-done'));
+
     await waitFor(() => {
       expect(addSpy).toHaveBeenCalledWith(property.id, img);
     });
     expect(toast.success).toHaveBeenCalledWith(
       expect.stringMatching(/Foto geüpload/i),
     );
+  });
+
+  it('dismissing the annotator abandons the cover upload (no addPropertyPhoto)', async () => {
+    const property = await seedProperty();
+
+    const mod = await import('@/db/photos');
+    const addSpy = vi.mocked(mod.addPropertyPhoto);
+
+    render(
+      <CoverPhotoPickerDialog
+        property={property}
+        currentCoverPhotoId={null}
+        open
+        onOpenChange={vi.fn()}
+      />,
+    );
+
+    await screen.findByRole('button', { name: /Upload foto/i });
+    const input = document.querySelector<HTMLInputElement>('input[type="file"]');
+    const img = new File(['x'], 'cover.jpg', { type: 'image/jpeg' });
+    fireEvent.change(input!, { target: { files: [img] } });
+
+    await screen.findByTestId('annotator-stub');
+    fireEvent.click(screen.getByText('stub-cancel'));
+
+    await waitFor(() => {
+      expect(screen.queryByTestId('annotator-stub')).not.toBeInTheDocument();
+    });
+    expect(addSpy).not.toHaveBeenCalled();
   });
 
   it('uploading a non-image file toasts the Dutch error and does NOT call addPropertyPhoto', async () => {
