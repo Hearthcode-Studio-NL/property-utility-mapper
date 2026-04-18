@@ -141,18 +141,30 @@ Comfortable — shadcn "new-york" defaults. Do not compress spacing to fit more 
 
 ## Utility line colours
 
-The 8 colour-coded utility types are defined in the codebase (single source of truth, not duplicated here). They are app-specific data colours and are **not** part of the shadcn/brand palette.
+The 8 colour-coded utility types are defined in the codebase (single source of truth, not duplicated here). They follow Dutch cartographic convention (gas=yellow, electricity=red, sewer=brown, telecom=green, irrigation=light blue, garden lighting=orange, drainage=grey-blue, drinking water=deep blue). They are app-specific data colours and are **not** part of the shadcn/brand palette.
+
+**Every utility line is rendered with a pure-black casing underneath the coloured fill** (see `CASING_COLOR` in `src/lib/utilityColors.ts`). The casing is the cartographic guarantee of line legibility on arbitrary map surfaces; it's what carries a colour like gas yellow to a legible edge against white tiles. Legend swatches mirror this by drawing the same fill colour with a 1-px black ring so the legend matches what's drawn.
 
 ### Audit rule
 
-Before V2.1 Phase C ships, an accessibility audit runs on these 8 colours. For each colour, verify:
+Before any palette change ships, an accessibility audit runs on the 8 colours AND the casing. For each colour, verify:
 
-1. Contrast ratio against both the OSM base layer (light tiles, ~`#F2EFE9`) and the PDOK satellite imagery (averaged mid-tone) meets WCAG AA for non-text (3:1 minimum).
-2. Contrast ratio against `--background` in both light and dark mode (the colour appears in the legend).
-3. No perceptual collision with the brand green (`--primary`) — visibly distinguishable even for users with deuteranopia or protanopia. Test with a colourblind simulator.
-4. No perceptual collision with destructive red (`--destructive`).
+1. **Effective** contrast ratio (= `max(fill-contrast, casing-contrast)`) against OSM light tiles, PDOK BRT Grijs (v2.1.3 neutral default), PDOK satellite mid-tone, and `--background` in both light and dark mode meets WCAG AA for non-text (3:1 minimum).
+2. No perceptual collision with brand green (`--primary`) — ΔE ≥ 15 in CIE Lab (CIEDE2000).
+3. No perceptual collision with destructive red (`--destructive`) — ΔE ≥ 15 (`electricity` is exempt by design — it's semantic red).
+4. Pairwise ΔE between every utility colour pair under normal vision, deuteranopia, and protanopia. Below-threshold pairs are documented as accepted residuals, not silently tolerated.
 
-If any colour fails, document the adjustment with a note and ship the fix. If all pass, record "audit passed YYYY-MM-DD" in this section and move on.
+If any colour fails, document the adjustment with a note and ship the fix. If all pass, record the dated pass in this section and move on.
+
+### Audit status
+
+**Audit passed 2026-04-18** — palette + outline strategy meets WCAG AA against OSM, PDOK BRT Grijs, PDOK satellite, and both `--background` modes. All 8 colours pass every per-colour check. Report: `outputs/utility-colour-audit-2026-04-18.md`. Re-run with `node scripts/audit-utility-colours.mjs` (culori is devDep-only).
+
+**Accepted residuals** (documented, not fixed at the hex level):
+
+- `water ↔ drainage` ΔE 14.36 in normal vision — both are blues (deep blue vs grey-blue). Distinguishable in practice; collapsing them or pushing drainage toward a non-blue loses the Dutch-convention identity.
+- `electricity ↔ sewage` ΔE 5.95 under deuteranopia — red and brown collapse onto the red-green axis for ~6% of male users. The Dutch convention fixes electricity=red and sewer=brown; the per-DESIGN-SYSTEM accessibility rule that colour is never the only channel applies here — labels in hover / legend / line attributes disambiguate. A follow-up line-pattern channel (dash / dot / solid per type) is the proper fix and is deferred.
+- `irrigation ↔ drainage` ΔE 14.64 under deuteranopia — both appear bluish-grey to deuteranopes; same mitigation via label + context.
 
 ---
 
@@ -284,5 +296,6 @@ A short session that lands the design system in `globals.css` without touching a
 
 ## Pending
 
-- [ ] Utility-line-colour accessibility audit (before V2.1 Phase C)
+- [x] Utility-line-colour accessibility audit — passed 2026-04-18 (v2.1.4); see "Audit status" above
+- [ ] Line-pattern channel (dash / dot / solid per utility type) — mitigates the documented deuteranopia residuals; deferred
 - [ ] Any existing component that hardcodes a colour or radius gets flagged and migrated to tokens (ongoing, pick up as we touch each component)

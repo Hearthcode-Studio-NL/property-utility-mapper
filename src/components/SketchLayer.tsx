@@ -1,6 +1,7 @@
 import { useEffect, useRef } from 'react';
 import { Polyline, useMap, useMapEvents } from 'react-leaflet';
 import type { Coord } from '../lib/snap';
+import { CASING_COLOR } from '../lib/utilityColors';
 
 interface SketchLayerProps {
   points: Coord[];
@@ -55,14 +56,26 @@ export default function SketchLayer({
 
   if (points.length < 2) return null;
   return (
-    <Polyline
-      positions={points}
-      pathOptions={{
-        color,
-        weight: 4,
-        dashArray: '6,8',
-        interactive: false,
-      }}
-    />
+    <>
+      <Polyline
+        positions={points}
+        pathOptions={{
+          color: CASING_COLOR,
+          weight: 7,
+          dashArray: '6,8',
+          opacity: 0.9,
+          interactive: false,
+        }}
+      />
+      <Polyline
+        positions={points}
+        pathOptions={{
+          color,
+          weight: 4,
+          dashArray: '6,8',
+          interactive: false,
+        }}
+      />
+    </>
   );
 }
