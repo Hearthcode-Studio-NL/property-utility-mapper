@@ -1,8 +1,9 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import PhotoUploader from './PhotoUploader';
+import PhotoUploader, { NON_IMAGE_MESSAGE } from './PhotoUploader';
 import { MAX_PHOTOS_PER_LINE } from '@/db/photos';
+import { toast } from 'sonner';
 
 vi.mock('@/db/photos', async () => {
   const actual = await vi.importActual<typeof import('@/db/photos')>('@/db/photos');
@@ -23,83 +24,80 @@ vi.mock('sonner', () => ({
   toast: { error: vi.fn(), success: vi.fn() },
 }));
 
-function mockMatchMedia(coarse: boolean) {
-  vi.stubGlobal(
-    'matchMedia',
-    vi.fn().mockImplementation((query: string) => ({
-      matches: query.includes('coarse') ? coarse : false,
-      media: query,
-      onchange: null,
-      addListener: vi.fn(),
-      removeListener: vi.fn(),
-      addEventListener: vi.fn(),
-      removeEventListener: vi.fn(),
-      dispatchEvent: vi.fn(),
-    })),
-  );
-}
-
-describe('PhotoUploader', () => {
+describe('PhotoUploader (v2.3.2)', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    vi.unstubAllGlobals();
   });
 
   it('shows the current count and the line limit', () => {
-    mockMatchMedia(false);
     render(<PhotoUploader lineId="line-1" photoCount={2} />);
     expect(screen.getByText(`2 / ${MAX_PHOTOS_PER_LINE}`)).toBeInTheDocument();
   });
 
   it('disables the Add button at the photo limit', () => {
-    mockMatchMedia(false);
-    render(
-      <PhotoUploader lineId="line-1" photoCount={MAX_PHOTOS_PER_LINE} />,
-    );
+    render(<PhotoUploader lineId="line-1" photoCount={MAX_PHOTOS_PER_LINE} />);
     expect(screen.getByRole('button', { name: /Foto toevoegen/ })).toBeDisabled();
   });
 
-  it('does NOT set capture on desktop (fine pointer)', async () => {
-    mockMatchMedia(false);
-    const { container } = render(
-      <PhotoUploader lineId="line-1" photoCount={0} />,
-    );
-    // Wait for the useEffect to resolve the coarse-pointer check.
-    await waitFor(() => {
-      const input = container.querySelector('input[type="file"]');
-      expect(input).not.toBeNull();
-      expect(input?.getAttribute('capture')).toBeNull();
-    });
+  it('renders a hidden file input with accept="image/*" and multiple, and NO capture attr (so iOS offers library + camera)', () => {
+    const { container } = render(<PhotoUploader lineId="line-1" photoCount={0} />);
+    const input = container.querySelector<HTMLInputElement>('input[type="file"]');
+    expect(input).not.toBeNull();
+    expect(input?.getAttribute('accept')).toBe('image/*');
+    // Absence is important: capture="environment" on iOS removes the
+    // Photo Library option. accept="image/*" alone keeps both available.
+    expect(input?.hasAttribute('capture')).toBe(false);
+    expect(input?.hasAttribute('multiple')).toBe(true);
   });
 
-  it('sets capture="environment" on coarse-pointer devices (mobile)', async () => {
-    mockMatchMedia(true);
-    const { container } = render(
-      <PhotoUploader lineId="line-1" photoCount={0} />,
-    );
-    await waitFor(() => {
-      const input = container.querySelector('input[type="file"]');
-      expect(input?.getAttribute('capture')).toBe('environment');
-    });
-  });
-
-  it('uploads a selected file via addPhoto', async () => {
-    mockMatchMedia(false);
+  it('uploads a selected image file via addPhoto', async () => {
     const mod = await import('@/db/photos');
     const addSpy = vi.mocked(mod.addPhoto);
 
     const user = userEvent.setup();
-    const { container } = render(
-      <PhotoUploader lineId="line-1" photoCount={0} />,
-    );
+    const { container } = render(<PhotoUploader lineId="line-1" photoCount={0} />);
 
     const file = new File(['x'], 'photo.jpg', { type: 'image/jpeg' });
     const input = container.querySelector('input[type="file"]') as HTMLInputElement;
-    expect(input).not.toBeNull();
-
     await user.upload(input, file);
 
     await waitFor(() => expect(addSpy).toHaveBeenCalledOnce());
     expect(addSpy).toHaveBeenCalledWith('line-1', file);
+  });
+
+  it('rejects a non-image file with a Dutch error toast and does NOT call addPhoto', async () => {
+    const mod = await import('@/db/photos');
+    const addSpy = vi.mocked(mod.addPhoto);
+
+    const { container } = render(<PhotoUploader lineId="line-1" photoCount={0} />);
+    const input = container.querySelector('input[type="file"]') as HTMLInputElement;
+
+    // Bypass testing-library's accept-attribute filter (userEvent.upload
+    // silently drops files that don't match `accept`) so we can exercise
+    // our own runtime MIME guard.
+    const pdf = new File(['fake'], 'doc.pdf', { type: 'application/pdf' });
+    fireEvent.change(input, { target: { files: [pdf] } });
+
+    await waitFor(() => {
+      expect(toast.error).toHaveBeenCalledWith(NON_IMAGE_MESSAGE);
+    });
+    expect(addSpy).not.toHaveBeenCalled();
+  });
+
+  it('is a silent no-op when the picker closes with no selection', async () => {
+    const mod = await import('@/db/photos');
+    const addSpy = vi.mocked(mod.addPhoto);
+
+    const { container } = render(<PhotoUploader lineId="line-1" photoCount={0} />);
+    const input = container.querySelector('input[type="file"]') as HTMLInputElement;
+
+    // Fire the change handler with an empty FileList — mimics a user
+    // opening + cancelling the native picker.
+    input.dispatchEvent(new Event('change', { bubbles: true }));
+
+    // Nothing persisted; no toast (neither success nor error).
+    expect(addSpy).not.toHaveBeenCalled();
+    expect(toast.error).not.toHaveBeenCalled();
+    expect(toast.success).not.toHaveBeenCalled();
   });
 });

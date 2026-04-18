@@ -265,6 +265,51 @@ describe('Dexie migrations — plumbing', () => {
     ]);
   });
 
+  it('(g) v2.3.1 -> v2.3.2 photos schema bump: adds a propertyId index without touching existing line-photo rows', async () => {
+    // Mirrors the real-world v5 -> v6 upgrade in src/db/dexie.ts. The
+    // new index lets us query property-scoped (cover) photos
+    // independently, but existing line photos keep their shape.
+    const name = dbName('g');
+
+    interface PhotoV5Shape {
+      id: string;
+      lineId: string;
+    }
+    interface PhotoV6Shape extends PhotoV5Shape {
+      propertyId?: string;
+    }
+
+    const v5 = new Dexie(name) as Dexie & {
+      photos: Table<PhotoV5Shape, string>;
+    };
+    v5.version(5).stores({ photos: 'id, lineId' });
+    openDbs.push(v5);
+    await v5.photos.bulkAdd([
+      { id: 'legacy-1', lineId: 'line-a' },
+      { id: 'legacy-2', lineId: 'line-b' },
+    ]);
+    v5.close();
+
+    const v6 = new Dexie(name) as Dexie & {
+      photos: Table<PhotoV6Shape, string>;
+    };
+    v6.version(5).stores({ photos: 'id, lineId' });
+    v6.version(6).stores({ photos: 'id, lineId, propertyId' });
+    openDbs.push(v6);
+
+    // Existing line photos are untouched.
+    const preserved = await v6.photos.orderBy('id').toArray();
+    expect(preserved).toEqual([
+      { id: 'legacy-1', lineId: 'line-a' },
+      { id: 'legacy-2', lineId: 'line-b' },
+    ]);
+
+    // And the new propertyId index is usable for fresh rows.
+    await v6.photos.add({ id: 'prop-scoped', lineId: null as unknown as string, propertyId: 'p1' });
+    const byProperty = await v6.photos.where('propertyId').equals('p1').toArray();
+    expect(byProperty.map((p) => p.id)).toEqual(['prop-scoped']);
+  });
+
   it('(d) a failing db.open() surfaces as a catchable Dexie.VersionError — not a silent crash', async () => {
     // Mocked failure path per the v2.1.6 prompt ("don't actually corrupt
     // anything"). We're asserting the CONTRACT callers get when Dexie

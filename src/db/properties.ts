@@ -1,7 +1,10 @@
 import type { Property, UtilityLine, UUID } from '../types';
 import { generateId } from '../lib/ids';
 import { db } from './dexie';
-import { deletePhotosForLineTx } from './photos';
+import {
+  deletePhotosForLineTx,
+  deletePhotosForPropertyTx,
+} from './photos';
 
 export interface NewPropertyInput {
   street: string;
@@ -220,6 +223,10 @@ export async function deleteProperty(id: UUID): Promise<void> {
       for (const line of lines) {
         await deletePhotosForLineTx(line.id);
       }
+      // v2.3.2: property-scoped (cover) photos live in the photos table
+      // with propertyId === this property. Cascade them too so no blob
+      // orphans linger after the property row is gone.
+      await deletePhotosForPropertyTx(id);
       await db.utilityLines.where('propertyId').equals(id).delete();
       await db.klicFiles.where('propertyId').equals(id).delete();
       await db.properties.delete(id);

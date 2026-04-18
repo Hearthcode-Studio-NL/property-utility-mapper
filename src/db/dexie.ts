@@ -164,6 +164,18 @@ class PropertyUtilityMapperDB extends Dexie {
             if (line.thickness === undefined) line.thickness = 'normaal';
           });
       });
+
+    // v6 — property-scoped photos. Adds a `propertyId` index to the
+    // photos table so we can query property-level (cover) photos
+    // independently of line photos. No row migration needed — existing
+    // photos already have lineId set and no propertyId, which continues
+    // to mean "line photo" under the new model. Added in v2.3.2.
+    this.version(6).stores({
+      properties: 'id, city, createdAt',
+      utilityLines: 'id, propertyId, type, createdAt',
+      photos: 'id, lineId, propertyId, createdAt',
+      klicFiles: 'id, propertyId, uploadedAt',
+    });
   }
 }
 

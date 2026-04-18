@@ -299,7 +299,7 @@ export default function Property() {
               : '';
 
   return (
-    <div className="flex h-full flex-col">
+    <div className="flex min-h-full flex-col md:h-full">
       <header className="flex items-center justify-between gap-3 border-b bg-background px-4 py-3 shadow-sm">
         <div className="min-w-0">
           <Link to="/" className="text-sm text-muted-foreground hover:underline">
@@ -325,7 +325,16 @@ export default function Property() {
 
       <PropertyNotesCover property={property} />
 
-      <div className="flex flex-1 flex-col overflow-hidden md:flex-row">
+      {/*
+        Desktop: flex-row with overflow-hidden so the map + side panel
+        split horizontally and neither scrolls the outer page.
+        Mobile: stacked and natural page-flow (no overflow-hidden) so
+        the LinesPanel below the map is reachable by page scroll —
+        PropertyNotesCover + header can push the panel past the
+        viewport edge and nothing clips. h-[55vh] keeps the map
+        usable above the fold; users scroll down to reach the panel.
+      */}
+      <div className="flex flex-1 flex-col md:flex-row md:overflow-hidden">
         <div ref={mapContainerRef} className="relative h-[55vh] md:h-auto md:flex-1">
           <MapCanvas
             lat={property.centerLat}

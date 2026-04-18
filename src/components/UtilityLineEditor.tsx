@@ -74,7 +74,7 @@ export default function UtilityLineEditor({
 
   return (
     <Dialog open onOpenChange={(open) => !open && onClose()}>
-      <DialogContent className="flex max-h-[90vh] flex-col gap-0 overflow-hidden p-0 sm:max-w-md">
+      <DialogContent className="flex max-h-[90dvh] flex-col gap-0 overflow-hidden p-0 sm:max-w-md">
         <DialogHeader className="border-b px-6 pb-4 pt-6">
           <DialogTitle>Leiding bewerken</DialogTitle>
           <DialogDescription className="sr-only">

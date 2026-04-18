@@ -173,6 +173,42 @@ describe('db/properties', () => {
     expect(await db.photos.toArray()).toHaveLength(0);
   });
 
+  it('deleteProperty cascades to property-scoped photos (v2.3.2 cover uploads)', async () => {
+    const doomed = await addProperty(makeInput({ street: 'WithCoverUpload' }));
+    // A property-scoped photo (lineId: null, propertyId set) — a cover
+    // photo uploaded via CoverPhotoPickerDialog post-v2.3.2.
+    await db.photos.add({
+      id: 'property-cover-1',
+      lineId: null,
+      propertyId: doomed.id,
+      blob: new Blob(['p']),
+      thumbnailBlob: new Blob(['pt']),
+      mimeType: 'image/jpeg',
+      createdAt: new Date().toISOString(),
+    });
+    // Plus a line photo to make sure BOTH kinds of photo cascade.
+    const line = await addUtilityLine({
+      propertyId: doomed.id,
+      type: 'water',
+      vertices: [
+        [1, 2],
+        [1.1, 2.1],
+      ],
+    });
+    await db.photos.add({
+      id: 'line-photo-1',
+      lineId: line.id,
+      blob: new Blob(['l']),
+      thumbnailBlob: new Blob(['lt']),
+      mimeType: 'image/jpeg',
+      createdAt: new Date().toISOString(),
+    });
+
+    await deleteProperty(doomed.id);
+
+    expect(await db.photos.toArray()).toHaveLength(0);
+  });
+
   it('deleteProperty cascades to klicFiles tied to the property', async () => {
     const doomed = await addProperty(makeInput({ street: 'WithKlic' }));
     await db.klicFiles.add({

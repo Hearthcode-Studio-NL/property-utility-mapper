@@ -76,9 +76,21 @@ export interface UtilityLine {
   updatedAt: ISODate;
 }
 
+/**
+ * A photo is either:
+ *   - a LINE photo — bound to a specific utility line via `lineId`; also
+ *     surfaces in that line's photo gallery. `propertyId` is undefined.
+ *   - a PROPERTY photo — standalone, tied to a property for cover-image
+ *     use. `lineId` is null, `propertyId` is the target property id.
+ *
+ * Added in v2.3.2: before this slice, every Photo was a line photo
+ * (`lineId: UUID`). The v5→v6 Dexie migration added a `propertyId`
+ * index; existing rows are untouched and remain line photos.
+ */
 export interface Photo {
   id: UUID;
-  lineId: UUID;
+  lineId: UUID | null;
+  propertyId?: UUID;
   blob: Blob;
   thumbnailBlob: Blob;
   mimeType: string;

@@ -1,8 +1,9 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState, type ChangeEvent } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { toast } from 'sonner';
 
 import { db } from '@/db/dexie';
+import { addPropertyPhoto } from '@/db/photos';
 import { CoverPhotoNotFoundError, updateProperty } from '@/db/properties';
 import type { Photo, Property, UUID } from '@/types';
 import { Button } from '@/components/ui/button';
@@ -14,6 +15,9 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
+import { Label } from '@/components/ui/label';
+import { Separator } from '@/components/ui/separator';
+import { NON_IMAGE_MESSAGE } from './PhotoUploader';
 import { cn } from '@/lib/utils';
 
 interface Props {
@@ -24,11 +28,19 @@ interface Props {
 }
 
 /**
- * Pick one of the property's existing line-photos as the cover image.
+ * Cover-photo picker.
  *
- * No upload happens here — this slice (v2.2.1) deliberately scopes the
- * cover source to already-attached photos. "Verwijder cover" clears the
- * reference; "Kies" commits the radio selection via updateProperty.
+ * v2.3.2 upgrade:
+ *   - Upload produces a *property-scoped* photo (not attached to any
+ *     utility line). Stored via `addPropertyPhoto` with the v6 Dexie
+ *     schema. This matches the homeowner mental model — a cover photo
+ *     is "the house", not "the water line".
+ *   - The native file input has no `capture="environment"` attribute
+ *     so iOS offers "Photo Library" + "Take Photo" instead of forcing
+ *     the camera.
+ *   - The radio grid shows BOTH line photos (attached to this
+ *     property's lines) AND property photos uploaded here, so the user
+ *     can still pick an existing line image if they want.
  */
 export default function CoverPhotoPickerDialog({
   property,
@@ -40,32 +52,67 @@ export default function CoverPhotoPickerDialog({
   const [busy, setBusy] = useState(false);
 
   // Reset selection to the property's current value whenever the dialog
-  // opens, so the user sees what's actually stored (not stale state).
-  // Uses the "adjust state during render" pattern (see React docs) rather
-  // than a useEffect + setState, which the react-hooks lint flags.
+  // (re-)opens. "Adjust state during render" pattern — cheaper than a
+  // useEffect + setState and avoids the react-hooks lint.
   const [prevOpen, setPrevOpen] = useState(open);
   if (open !== prevOpen) {
     setPrevOpen(open);
     if (open) setSelectedId(currentCoverPhotoId);
   }
 
-  // All photos attached to any line on this property. useLiveQuery so the
-  // grid stays fresh if the user uploads / deletes photos elsewhere while
-  // the dialog is open.
+  // All photos the user could pick as cover: line photos attached to
+  // any of this property's lines + property-scoped photos uploaded
+  // directly. Merged + sorted by createdAt so ordering is stable.
   const photos = useLiveQuery<Photo[], Photo[]>(
     async () => {
       const lines = await db.utilityLines
         .where('propertyId')
         .equals(property.id)
         .toArray();
-      if (lines.length === 0) return [];
       const lineIds = lines.map((l) => l.id);
-      const all = await db.photos.where('lineId').anyOf(lineIds).toArray();
-      return all.sort((a, b) => a.createdAt.localeCompare(b.createdAt));
+      const [linePhotos, propertyPhotos] = await Promise.all([
+        lineIds.length === 0
+          ? Promise.resolve([] as Photo[])
+          : db.photos.where('lineId').anyOf(lineIds).toArray(),
+        db.photos.where('propertyId').equals(property.id).toArray(),
+      ]);
+      return [...linePhotos, ...propertyPhotos].sort((a, b) =>
+        a.createdAt.localeCompare(b.createdAt),
+      );
     },
     [property.id, open],
     [],
   );
+
+  const inputRef = useRef<HTMLInputElement>(null);
+  const [uploading, setUploading] = useState(false);
+
+  async function handleUploadChange(e: ChangeEvent<HTMLInputElement>) {
+    const files = Array.from(e.target.files ?? []);
+    e.target.value = '';
+    if (files.length === 0) return; // picker cancelled — silent no-op
+
+    const file = files[0]!;
+    if (!file.type.startsWith('image/')) {
+      toast.error(NON_IMAGE_MESSAGE);
+      return;
+    }
+
+    setUploading(true);
+    try {
+      const photo = await addPropertyPhoto(property.id, file);
+      setSelectedId(photo.id);
+      toast.success(
+        'Foto geüpload. Klik "Kies" om als coverfoto in te stellen.',
+      );
+    } catch (err) {
+      toast.error(
+        err instanceof Error ? err.message : 'Foto kon niet worden opgeslagen.',
+      );
+    } finally {
+      setUploading(false);
+    }
+  }
 
   async function handleSave() {
     if (selectedId === currentCoverPhotoId) {
@@ -100,21 +147,43 @@ export default function CoverPhotoPickerDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-xl">
+      <DialogContent className="max-h-[90dvh] max-w-xl overflow-y-auto">
         <DialogHeader>
           <DialogTitle>Coverfoto kiezen</DialogTitle>
           <DialogDescription>
-            Kies een foto uit de leidingen op dit adres als coverafbeelding.
+            Upload een nieuwe foto of kies een bestaande foto van dit
+            adres.
           </DialogDescription>
         </DialogHeader>
 
-        {photos.length === 0 ? (
-          <div className="rounded-md border border-dashed border-border p-6 text-center text-sm text-muted-foreground">
-            Nog geen foto&apos;s op dit adres. Voeg eerst een foto toe aan
-            een leiding.
-          </div>
-        ) : (
-          <div className="max-h-[50vh] overflow-y-auto">
+        <section aria-label="Nieuwe foto uploaden" className="flex flex-col gap-2">
+          <Label className="text-sm font-medium">Nieuwe foto uploaden</Label>
+          <Button
+            type="button"
+            variant="outline"
+            disabled={uploading || busy}
+            onClick={() => inputRef.current?.click()}
+          >
+            {uploading ? 'Uploaden…' : 'Upload foto'}
+          </Button>
+          <input
+            ref={inputRef}
+            type="file"
+            accept="image/*"
+            className="hidden"
+            onChange={handleUploadChange}
+          />
+        </section>
+
+        <Separator />
+
+        <div className="flex flex-col gap-2">
+          <Label className="text-sm font-medium">Bestaande foto&apos;s</Label>
+          {photos.length === 0 ? (
+            <div className="rounded-md border border-dashed border-border p-6 text-center text-sm text-muted-foreground">
+              Nog geen foto&apos;s op dit adres.
+            </div>
+          ) : (
             <div
               role="radiogroup"
               aria-label="Beschikbare foto's"
@@ -129,8 +198,8 @@ export default function CoverPhotoPickerDialog({
                 />
               ))}
             </div>
-          </div>
-        )}
+          )}
+        </div>
 
         <DialogFooter className="sm:justify-between">
           <Button
