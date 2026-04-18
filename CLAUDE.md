@@ -138,7 +138,8 @@ ESLint flat config (`eslint.config.js`) with `react-hooks/recommended` + `react-
 
 These warnings appear in the browser DevTools but are NOT actionable in
 this codebase. Don't hunt them and don't add a global `console.warn`
-filter — the signal is worth more than the silence.
+filter — the signal is worth more than the silence. If you see one of
+these for the first time, cross-reference it here before debugging.
 
 - **`MouseEvent.mozPressure is deprecated`** and
   **`MouseEvent.mozInputSource is deprecated`** — Firefox-only. Emitted
@@ -146,6 +147,29 @@ filter — the signal is worth more than the silence.
   `node_modules/leaflet/dist/leaflet-src.esm.js` (look for
   `e.pressure || e.mozPressure`). We're on the latest Leaflet 1.9.4;
   Leaflet 2.0 is still alpha. Revisit when Leaflet 2 ships stable.
+
+- **Vite pre-bundled dependency source map errors** — messages like
+  `Source map error: No sources are declared in this source map` pointing
+  at files under `node_modules/.vite/deps/*.js.map`. Firefox's DevTools is
+  stricter than Chrome about incomplete source maps, and esbuild's
+  pre-bundled output is intentionally minimal. Not a bug in our code.
+  Filter the DevTools console with `-Source map` if the noise bothers you.
+
+- **React DevTools extension source map errors** — `installHook.js.map`
+  and `react_devtools_backend_compact.js.map` failures come from the
+  browser extension itself, not our bundle. Disable the extension or
+  ignore them.
+
+- **React Router future flag warnings** — PREVIOUSLY present
+  (`v7_startTransition`, `v7_relativeSplatPath`), now FIXED by opting
+  both flags in at the `<BrowserRouter>` in `src/main.tsx`. If they
+  reappear, it's a regression — check that the `future={{...}}` prop is
+  still set on the router.
+
+- **Vite HMR informational logs** — `[vite] connecting...`,
+  `[vite] connected.`, and React DevTools' "Download the React DevTools
+  for a better development experience" hint. Informational only, expected
+  in dev mode, never appear in production builds.
 
 ## Testing
 
