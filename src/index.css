@@ -117,3 +117,36 @@
   border-style: solid;
   border-color: #64748b;
 }
+
+/*
+ * v2.3.7 — snap-to-line/vertex ghost preview. A small crosshair that
+ * appears at the resolved snap target while the user is aiming a click
+ * (drawing) or dragging a vertex (editing). Data-semantic: same look in
+ * both themes so the visual meaning "you will snap HERE" never depends
+ * on light/dark. Sky-500 to match the vertex-handle accent.
+ */
+.snap-ghost {
+  position: relative;
+  pointer-events: none;
+}
+.snap-ghost::before,
+.snap-ghost::after {
+  content: '';
+  position: absolute;
+  background: #0ea5e9;
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.9);
+}
+.snap-ghost::before {
+  left: 50%;
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  transform: translateX(-50%);
+}
+.snap-ghost::after {
+  top: 50%;
+  left: 0;
+  right: 0;
+  height: 2px;
+  transform: translateY(-50%);
+}

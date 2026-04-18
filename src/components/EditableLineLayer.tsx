@@ -1,7 +1,7 @@
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import { Marker, Polyline, useMap } from 'react-leaflet';
 import L from 'leaflet';
-import { findSnapTarget, type Coord } from '../lib/snap';
+import { findBestSnap, type Coord, type Segment } from '../lib/snap';
 import { CASING_COLOR } from '../lib/utilityColors';
 import { casingWidth } from '../lib/lineWidth';
 
@@ -16,6 +16,8 @@ interface EditableLineLayerProps {
   onVertexSelect: (index: number) => void;
   onInsertBetween: (afterIndex: number) => void;
   snapCandidates?: Coord[];
+  /** v2.3.7 — segments of every OTHER saved line for T-junction snap. */
+  segmentCandidates?: Segment[];
 }
 
 export default function EditableLineLayer({
@@ -28,10 +30,28 @@ export default function EditableLineLayer({
   onVertexSelect,
   onInsertBetween,
   snapCandidates = [],
+  segmentCandidates = [],
 }: EditableLineLayerProps) {
   const map = useMap();
   const fill = thickness;
   const casing = casingWidth(fill);
+  // v2.3.7 — ghost crosshair during an active drag. Tracks the resolved
+  // snap target (vertex OR perpendicular foot) for the vertex currently
+  // being dragged, so the user sees where the drop will land before
+  // releasing the mouse. Cleared on dragend regardless of whether a snap
+  // was applied.
+  const [snapPreview, setSnapPreview] = useState<Coord | null>(null);
+
+  const ghostIcon = useMemo(
+    () =>
+      L.divIcon({
+        className: 'snap-ghost',
+        iconSize: [18, 18],
+        iconAnchor: [9, 9],
+        html: '',
+      }),
+    [],
+  );
 
   const vertexIcon = useMemo(
     () =>
@@ -93,20 +113,33 @@ export default function EditableLineLayer({
           eventHandlers={{
             drag: (e) => {
               const ll = (e.target as L.Marker).getLatLng();
-              onVertexMove(i, [ll.lat, ll.lng]);
+              const raw: Coord = [ll.lat, ll.lng];
+              onVertexMove(i, raw);
+              // Preview the snap target live so the user sees where the
+              // drop will land. No commit yet — dragend is the source of
+              // truth.
+              const snap = findBestSnap(
+                raw,
+                snapCandidates,
+                segmentCandidates,
+                (c) => map.latLngToContainerPoint(c),
+              );
+              setSnapPreview(snap);
             },
             dragend: (e) => {
               const ll = (e.target as L.Marker).getLatLng();
               const raw: Coord = [ll.lat, ll.lng];
-              const snap = findSnapTarget(
+              const snap = findBestSnap(
                 raw,
                 snapCandidates,
+                segmentCandidates,
                 (c) => map.latLngToContainerPoint(c),
               );
               if (snap) {
                 onVertexMove(i, snap);
                 (e.target as L.Marker).setLatLng(snap);
               }
+              setSnapPreview(null);
               onVertexMoveEnd();
             },
             click: () => onVertexSelect(i),
@@ -123,6 +156,14 @@ export default function EditableLineLayer({
           }}
         />
       ))}
+      {snapPreview && (
+        <Marker
+          position={snapPreview}
+          icon={ghostIcon}
+          interactive={false}
+          keyboard={false}
+        />
+      )}
     </>
   );
 }

@@ -20,6 +20,7 @@ import { formatDisplayAddress } from '../lib/address';
 import { ModeToggle } from '@/components/mode-toggle';
 import LayerManagerButton from '@/components/map/LayerManagerButton';
 import { formatMeters, pathLengthMeters } from '../lib/distance';
+import { verticesToSegments, type Segment } from '../lib/snap';
 import { useGpsWalk } from '../hooks/useGpsWalk';
 import { useLayerSelection } from '@/hooks/useLayerSelection';
 import MapCanvas from '../components/MapCanvas';
@@ -91,6 +92,20 @@ export default function Property() {
   const editingSnapCandidates = useMemo<[number, number][]>(
     () =>
       lines.filter((l) => l.id !== editingGeometryLineId).flatMap((l) => l.vertices),
+    [lines, editingGeometryLineId],
+  );
+  // v2.3.7 — parallel segment candidates for perpendicular T-junction snap.
+  // Same scope rules as the vertex lists: drawing sees every saved line,
+  // editing excludes the line being edited (can't snap to yourself).
+  const drawingSegmentCandidates = useMemo<Segment[]>(
+    () => lines.flatMap((l) => verticesToSegments(l.vertices)),
+    [lines],
+  );
+  const editingSegmentCandidates = useMemo<Segment[]>(
+    () =>
+      lines
+        .filter((l) => l.id !== editingGeometryLineId)
+        .flatMap((l) => verticesToSegments(l.vertices)),
     [lines, editingGeometryLineId],
   );
 
@@ -363,6 +378,7 @@ export default function Property() {
                 thickness={draftThickness}
                 onVertexAdded={addVertex}
                 snapCandidates={drawingSnapCandidates}
+                segmentCandidates={drawingSegmentCandidates}
               />
             )}
             {mode === 'walking' && (
@@ -384,6 +400,7 @@ export default function Property() {
                 onVertexSelect={setSelectedVertexIndex}
                 onInsertBetween={insertVertexBetween}
                 snapCandidates={editingSnapCandidates}
+                segmentCandidates={editingSegmentCandidates}
               />
             )}
             {mode === 'measuring' && (

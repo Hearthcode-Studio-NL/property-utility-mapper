@@ -1,5 +1,7 @@
-import { CircleMarker, Polyline, useMap, useMapEvents } from 'react-leaflet';
-import { findSnapTarget, type Coord } from '../lib/snap';
+import { useMemo, useState } from 'react';
+import { CircleMarker, Marker, Polyline, useMap, useMapEvents } from 'react-leaflet';
+import L from 'leaflet';
+import { findBestSnap, type Coord, type Segment } from '../lib/snap';
 import { CASING_COLOR } from '../lib/utilityColors';
 import { casingWidth } from '../lib/lineWidth';
 
@@ -10,6 +12,8 @@ interface DrawingLayerProps {
   thickness: number;
   onVertexAdded: (v: Coord) => void;
   snapCandidates?: Coord[];
+  /** v2.3.7 — segments of every in-scope saved line for T-junction snap. */
+  segmentCandidates?: Segment[];
 }
 
 export default function DrawingLayer({
@@ -18,20 +22,52 @@ export default function DrawingLayer({
   thickness,
   onVertexAdded,
   snapCandidates = [],
+  segmentCandidates = [],
 }: DrawingLayerProps) {
   const map = useMap();
   const fill = thickness;
   const casing = casingWidth(fill);
+  // v2.3.7 — ghost crosshair preview. null when the cursor isn't within
+  // snap threshold of any vertex or segment; lat/lng of the resolved snap
+  // target otherwise. State only drives the visual; the click handler
+  // resolves the snap itself so the two paths stay independent.
+  const [snapPreview, setSnapPreview] = useState<Coord | null>(null);
+
+  const ghostIcon = useMemo(
+    () =>
+      L.divIcon({
+        className: 'snap-ghost',
+        iconSize: [18, 18],
+        iconAnchor: [9, 9],
+        html: '',
+      }),
+    [],
+  );
 
   useMapEvents({
     click(e) {
       const raw: Coord = [e.latlng.lat, e.latlng.lng];
-      const snap = findSnapTarget(
+      const snap = findBestSnap(
         raw,
         snapCandidates,
+        segmentCandidates,
         (c) => map.latLngToContainerPoint(c),
       );
       onVertexAdded(snap ?? raw);
+      setSnapPreview(null);
+    },
+    mousemove(e) {
+      const raw: Coord = [e.latlng.lat, e.latlng.lng];
+      const snap = findBestSnap(
+        raw,
+        snapCandidates,
+        segmentCandidates,
+        (c) => map.latLngToContainerPoint(c),
+      );
+      setSnapPreview(snap);
+    },
+    mouseout() {
+      setSnapPreview(null);
     },
   });
 
@@ -69,6 +105,14 @@ export default function DrawingLayer({
           }}
         />
       ))}
+      {snapPreview && (
+        <Marker
+          position={snapPreview}
+          icon={ghostIcon}
+          interactive={false}
+          keyboard={false}
+        />
+      )}
     </>
   );
 }
