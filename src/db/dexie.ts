@@ -115,6 +115,29 @@ class PropertyUtilityMapperDB extends Dexie {
             }
           });
       });
+
+    // v4 — property-level notes + cover photo reference. Neither field is
+    // indexed (we only ever read them per-property), so .stores() is
+    // unchanged from v3 on the properties table. Existing rows get
+    // null-initialised so the new TypeScript Property type matches what
+    // actually sits on disk — callers don't need to branch on undefined vs
+    // null. Added in v2.2.1.
+    this.version(4)
+      .stores({
+        properties: 'id, city, createdAt',
+        utilityLines: 'id, propertyId, type, createdAt',
+        photos: 'id, lineId, createdAt',
+        klicFiles: 'id, propertyId, uploadedAt',
+      })
+      .upgrade(async (tx) => {
+        await tx
+          .table('properties')
+          .toCollection()
+          .modify((p: Property & { notes?: string | null; coverPhotoId?: UUID | null }) => {
+            if (p.notes === undefined) p.notes = null;
+            if (p.coverPhotoId === undefined) p.coverPhotoId = null;
+          });
+      });
   }
 }
 

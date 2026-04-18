@@ -3,6 +3,7 @@ import { Link, useNavigate, useParams } from 'react-router-dom';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { getProperty } from '../db/properties';
 import DeletePropertyDialog from '@/components/DeletePropertyDialog';
+import PropertyNotesCover from '@/components/PropertyNotesCover';
 import { Button } from '@/components/ui/button';
 import {
   addUtilityLine,
@@ -315,6 +316,8 @@ export default function Property() {
           <ModeToggle />
         </div>
       </header>
+
+      <PropertyNotesCover property={property} />
 
       <div className="flex flex-1 flex-col overflow-hidden md:flex-row">
         <div ref={mapContainerRef} className="relative h-[55vh] md:h-auto md:flex-1">

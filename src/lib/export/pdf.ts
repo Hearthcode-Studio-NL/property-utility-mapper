@@ -76,6 +76,23 @@ export async function exportPdf(
     doc.setTextColor(0);
   }
 
+  // v2.2.1: property-level notes in the header. Truncate at ~300 chars so
+  // the map still fits on the first page. splitTextToSize handles line
+  // wrapping against the page width.
+  if (property.notes && property.notes.trim().length > 0) {
+    const MAX_NOTES_CHARS = 300;
+    const raw = property.notes.trim();
+    const truncated =
+      raw.length > MAX_NOTES_CHARS ? `${raw.slice(0, MAX_NOTES_CHARS)}…` : raw;
+    doc.setFontSize(9);
+    doc.setFont('helvetica', 'normal');
+    doc.setTextColor(70);
+    const noteLines = doc.splitTextToSize(truncated, pageWidth - margin * 2);
+    doc.text(noteLines, margin, y);
+    y += noteLines.length * 4;
+    doc.setTextColor(0);
+  }
+
   doc.setFontSize(8);
   doc.setFont('helvetica', 'normal');
   doc.setTextColor(130);

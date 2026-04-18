@@ -40,6 +40,12 @@ export function buildGeoJson(
         country: property.country,
         fullAddress: property.fullAddress,
         displayAddress: formatDisplayAddress(property),
+        // v2.2.1: notes round-trip; cover photo only exposes presence
+        // (the binary blob stays in IndexedDB — never embed in exports).
+        ...(property.notes !== null && property.notes.length > 0
+          ? { notes: property.notes }
+          : {}),
+        hasCoverPhoto: property.coverPhotoId !== null,
         createdAt: property.createdAt,
         updatedAt: property.updatedAt,
       },
@@ -135,6 +141,10 @@ export async function importGeoJsonFromText(text: string): Promise<ImportResult>
     fullAddress: asString(rawProps.fullAddress) ?? `${street} ${houseNumber}, ${city}`,
     centerLat: lat,
     centerLng: lng,
+    // notes round-trip through GeoJSON; coverPhotoId does NOT because photos
+    // aren't embedded in exports. Import always clears the cover reference.
+    notes: asString(rawProps.notes) ?? null,
+    coverPhotoId: null,
     createdAt: asString(rawProps.createdAt) ?? now,
     updatedAt: now,
   };

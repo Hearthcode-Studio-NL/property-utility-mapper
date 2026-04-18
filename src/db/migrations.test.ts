@@ -160,6 +160,62 @@ describe('Dexie migrations — plumbing', () => {
     expect(await second.rows.get('new2')).toEqual({ id: 'new2', name: 'NoFlag' });
   });
 
+  it('(e) v2.2.0 -> v2.2.1 backfill: existing property rows receive notes=null and coverPhotoId=null', async () => {
+    // Mirrors the real-world v3 -> v4 upgrade in src/db/dexie.ts. We spin
+    // up a throwaway schema that matches the production properties store
+    // at v3 (no notes / coverPhotoId), insert a row, close, and reopen at
+    // v4 with the same upgrade body to verify the backfill happens.
+    const name = dbName('e');
+
+    interface PropertyV3Shape {
+      id: string;
+      street: string;
+      city: string;
+    }
+    interface PropertyV4Shape extends PropertyV3Shape {
+      notes: string | null;
+      coverPhotoId: string | null;
+    }
+
+    const v3 = new Dexie(name) as Dexie & {
+      properties: Table<PropertyV3Shape, string>;
+    };
+    v3.version(3).stores({ properties: 'id, city' });
+    openDbs.push(v3);
+    await v3.properties.add({
+      id: 'legacy-1',
+      street: 'Herengracht',
+      city: 'Amsterdam',
+    });
+    v3.close();
+
+    const v4 = new Dexie(name) as Dexie & {
+      properties: Table<PropertyV4Shape, string>;
+    };
+    v4.version(3).stores({ properties: 'id, city' });
+    v4.version(4)
+      .stores({ properties: 'id, city' })
+      .upgrade(async (tx) => {
+        await tx
+          .table<PropertyV4Shape>('properties')
+          .toCollection()
+          .modify((p) => {
+            if (p.notes === undefined) p.notes = null;
+            if (p.coverPhotoId === undefined) p.coverPhotoId = null;
+          });
+      });
+    openDbs.push(v4);
+
+    const migrated = await v4.properties.get('legacy-1');
+    expect(migrated).toEqual({
+      id: 'legacy-1',
+      street: 'Herengracht',
+      city: 'Amsterdam',
+      notes: null,
+      coverPhotoId: null,
+    });
+  });
+
   it('(d) a failing db.open() surfaces as a catchable Dexie.VersionError — not a silent crash', async () => {
     // Mocked failure path per the v2.1.6 prompt ("don't actually corrupt
     // anything"). We're asserting the CONTRACT callers get when Dexie

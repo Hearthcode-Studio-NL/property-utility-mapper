@@ -2,10 +2,12 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { db } from './dexie';
 import {
   addProperty,
+  CoverPhotoNotFoundError,
   deleteProperty,
   getProperty,
   listProperties,
   PropertyValidationError,
+  updateProperty,
   type NewPropertyInput,
 } from './properties';
 import { addUtilityLine } from './utilityLines';
@@ -190,6 +192,88 @@ describe('db/properties', () => {
     await expect(deleteProperty('does-not-exist')).resolves.toBeUndefined();
     expect(await db.properties.toArray()).toHaveLength(1);
     expect(await db.properties.toArray()).toEqual([kept]);
+  });
+
+  it('addProperty initialises notes and coverPhotoId to null (v2.2.1 defaults)', async () => {
+    const created = await addProperty(makeInput());
+    expect(created.notes).toBeNull();
+    expect(created.coverPhotoId).toBeNull();
+    const stored = await db.properties.get(created.id);
+    expect(stored?.notes).toBeNull();
+    expect(stored?.coverPhotoId).toBeNull();
+  });
+
+  it('updateProperty patches notes and bumps updatedAt', async () => {
+    const original = await addProperty(makeInput());
+    await new Promise((r) => setTimeout(r, 2));
+
+    const updated = await updateProperty(original.id, {
+      notes: 'Sleutel onder de mat achter',
+    });
+
+    expect(updated.notes).toBe('Sleutel onder de mat achter');
+    expect(updated.createdAt).toBe(original.createdAt);
+    expect(updated.updatedAt > original.updatedAt).toBe(true);
+    expect((await db.properties.get(original.id))?.notes).toBe(
+      'Sleutel onder de mat achter',
+    );
+  });
+
+  it('updateProperty accepts coverPhotoId when the photo exists', async () => {
+    const property = await addProperty(makeInput());
+    const line = await addUtilityLine({
+      propertyId: property.id,
+      type: 'water',
+      vertices: [
+        [1, 2],
+        [1.1, 2.1],
+      ],
+    });
+    await db.photos.add({
+      id: 'photo-valid',
+      lineId: line.id,
+      blob: new Blob(['b']),
+      thumbnailBlob: new Blob(['t']),
+      mimeType: 'image/jpeg',
+      createdAt: new Date().toISOString(),
+    });
+
+    const updated = await updateProperty(property.id, {
+      coverPhotoId: 'photo-valid',
+    });
+    expect(updated.coverPhotoId).toBe('photo-valid');
+  });
+
+  it('updateProperty rejects a coverPhotoId that does not reference an existing photo', async () => {
+    const property = await addProperty(makeInput());
+    await expect(
+      updateProperty(property.id, { coverPhotoId: 'nope-not-a-real-photo' }),
+    ).rejects.toBeInstanceOf(CoverPhotoNotFoundError);
+    // The property wasn't partially updated either.
+    expect((await db.properties.get(property.id))?.coverPhotoId).toBeNull();
+  });
+
+  it('updateProperty accepts coverPhotoId: null to clear a prior cover', async () => {
+    const property = await addProperty(makeInput());
+    const line = await addUtilityLine({
+      propertyId: property.id,
+      type: 'water',
+      vertices: [
+        [1, 2],
+        [1.1, 2.1],
+      ],
+    });
+    await db.photos.add({
+      id: 'photo-keep',
+      lineId: line.id,
+      blob: new Blob(['b']),
+      thumbnailBlob: new Blob(['t']),
+      mimeType: 'image/jpeg',
+      createdAt: new Date().toISOString(),
+    });
+    await updateProperty(property.id, { coverPhotoId: 'photo-keep' });
+    const cleared = await updateProperty(property.id, { coverPhotoId: null });
+    expect(cleared.coverPhotoId).toBeNull();
   });
 
   it('deleteProperty rolls the transaction back if any step fails — no orphans', async () => {

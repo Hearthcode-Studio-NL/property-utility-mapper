@@ -24,6 +24,20 @@ export interface Property {
   centerLat: number;
   centerLng: number;
 
+  /**
+   * Free-text notes about the property (access, keys, quirks). `null` when
+   * the owner hasn't written anything. Added in v2.2.1.
+   */
+  notes: string | null;
+  /**
+   * Opt-in reference to an existing Photo id to use as the property's cover
+   * image. Sourced from photos attached to any utility line on this
+   * property — there is no separate upload. `null` when unset. Added in
+   * v2.2.1. Orphan references (photo deleted elsewhere) render as a
+   * placeholder and get lazily cleared — see src/routes/Property.tsx.
+   */
+  coverPhotoId: UUID | null;
+
   createdAt: ISODate;
   updatedAt: ISODate;
 }
