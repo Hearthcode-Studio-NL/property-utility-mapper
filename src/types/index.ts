@@ -12,17 +12,16 @@ export type UtilityType =
   | 'drainage';
 
 /**
- * One of three stroke-width presets for a drawn line. Added in v2.3.1.
- * Kept as an enum rather than a raw pixel number so the design system
- * can tune the visual relationship (and the line casing) centrally.
+ * Integer stroke width for a drawn line. Range 1..8, default 4.
+ * v2.3.5 replaced the three-preset enum (`'dun' | 'normaal' | 'dik'`)
+ * with a bare number so users can dial a width between the old
+ * presets. The Dexie v6→v7 migration mapped the legacy strings to
+ * `'dun' → 2`, `'normaal' → 4`, `'dik' → 6` so visual widths are
+ * preserved for existing lines.
  */
-export type LineThickness = 'dun' | 'normaal' | 'dik';
-
-export const LINE_THICKNESSES: readonly LineThickness[] = [
-  'dun',
-  'normaal',
-  'dik',
-];
+export const LINE_THICKNESS_MIN = 1;
+export const LINE_THICKNESS_MAX = 8;
+export const LINE_THICKNESS_DEFAULT = 4;
 
 export interface Property {
   id: UUID;
@@ -61,11 +60,12 @@ export interface UtilityLine {
   type: UtilityType;
   vertices: [number, number][];
   /**
-   * Stroke-width preset. Added in v2.3.1 — pre-existing lines were
-   * backfilled to 'normaal' by the v4→v5 Dexie migration, so every
-   * line on disk has this field.
+   * Integer stroke width in pixels (1..8, default 4). Added in v2.3.1
+   * as a 3-value enum, migrated to a number in v2.3.5 (v6→v7 Dexie
+   * upgrade). Pre-existing lines were backfilled to 4 or to the
+   * numeric equivalent of their old preset.
    */
-  thickness: LineThickness;
+  thickness: number;
   depthCm?: number;
   material?: string;
   diameterMm?: number;

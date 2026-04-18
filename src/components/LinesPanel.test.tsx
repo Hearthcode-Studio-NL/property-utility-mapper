@@ -1,6 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
 import { render, screen } from '@testing-library/react';
-import userEvent from '@testing-library/user-event';
 import LinesPanel, { type Mode } from './LinesPanel';
 
 function makeProps(overrides: Partial<React.ComponentProps<typeof LinesPanel>> = {}) {
@@ -20,7 +19,6 @@ function makeProps(overrides: Partial<React.ComponentProps<typeof LinesPanel>> =
     onDraftTypeChange: vi.fn(),
     onStartDraw: vi.fn(),
     onStartWalk: vi.fn(),
-    onStartSketch: vi.fn(),
     onStartMeasure: vi.fn(),
     onFinishDraft: vi.fn(),
     onCancelDraft: vi.fn(),
@@ -38,35 +36,18 @@ function makeProps(overrides: Partial<React.ComponentProps<typeof LinesPanel>> =
 }
 
 describe('LinesPanel', () => {
-  it('in idle mode shows all three primary action buttons and Afstand meten', () => {
+  it('in idle mode shows the two primary action buttons and Afstand meten', () => {
     render(<LinesPanel {...makeProps()} />);
     expect(screen.getByRole('button', { name: /^Tekenen$/ })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /^Schetsen$/ })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /^Lopen$/ })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /Afstand meten/ })).toBeInTheDocument();
   });
 
-  it('fires onStartSketch when Schetsen is clicked', async () => {
-    const onStartSketch = vi.fn();
-    const user = userEvent.setup();
-    render(<LinesPanel {...makeProps({ onStartSketch })} />);
-    await user.click(screen.getByRole('button', { name: /^Schetsen$/ }));
-    expect(onStartSketch).toHaveBeenCalledOnce();
-  });
-
-  it('in sketching mode shows the finish/cancel controls and point count', () => {
-    render(<LinesPanel {...makeProps({ mode: 'sketching', draftCount: 7 })} />);
-    expect(screen.getByText(/Sleep over de kaart/)).toBeInTheDocument();
-    expect(screen.getByText(/7 punten/)).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /Klaar/ })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /Annuleren/ })).toBeInTheDocument();
-    // No start-buttons in sketching mode.
-    expect(screen.queryByRole('button', { name: /^Tekenen$/ })).not.toBeInTheDocument();
-  });
-
-  it('disables the sketching Klaar button with fewer than 2 points', () => {
-    render(<LinesPanel {...makeProps({ mode: 'sketching', draftCount: 1 })} />);
-    expect(screen.getByRole('button', { name: /Klaar/ })).toBeDisabled();
+  it('v2.3.5: no Schetsen button — freehand drawing mode has been removed', () => {
+    render(<LinesPanel {...makeProps()} />);
+    expect(
+      screen.queryByRole('button', { name: /^Schetsen$/ }),
+    ).not.toBeInTheDocument();
   });
 
   it('disables exports while in a non-idle mode', () => {

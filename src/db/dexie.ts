@@ -18,13 +18,17 @@
  * fallbacks.
  */
 import Dexie, { type Table } from 'dexie';
-import type {
-  KlicFile,
-  LineThickness,
-  Photo,
-  Property,
-  UtilityLine,
-} from '../types';
+import type { KlicFile, Photo, Property, UtilityLine } from '../types';
+import { LINE_THICKNESS_DEFAULT } from '../types';
+
+/**
+ * The legacy three-preset thickness enum used between v2.3.1 (Dexie v5)
+ * and v2.3.4 (Dexie v6). Kept ONLY here, for the migrations that bring
+ * legacy rows into the current schema. From v2.3.5 onwards the
+ * `UtilityLine.thickness` field is a plain number; no other code touches
+ * this type.
+ */
+type LegacyLineThickness = 'dun' | 'normaal' | 'dik';
 
 class PropertyUtilityMapperDB extends Dexie {
   properties!: Table<Property, string>;
@@ -145,10 +149,11 @@ class PropertyUtilityMapperDB extends Dexie {
           });
       });
 
-    // v5 — line thickness. Adds a `thickness` enum field to every
-    // UtilityLine, backfilled to 'normaal' for existing rows. No index
-    // change — thickness isn't queryable, only read per line. Added in
-    // v2.3.1.
+    // v5 — line thickness. Added a three-value enum to every
+    // UtilityLine, backfilled to 'normaal'. v7 later converts this
+    // enum to a plain number; the string fallback here remains the
+    // correct intermediate value for users stepping v4 → v5 → … → v7.
+    // No index change — thickness isn't queryable.
     this.version(5)
       .stores({
         properties: 'id, city, createdAt',
@@ -160,9 +165,15 @@ class PropertyUtilityMapperDB extends Dexie {
         await tx
           .table('utilityLines')
           .toCollection()
-          .modify((line: UtilityLine & { thickness?: LineThickness }) => {
-            if (line.thickness === undefined) line.thickness = 'normaal';
-          });
+          .modify(
+            (
+              line: Omit<UtilityLine, 'thickness'> & {
+                thickness?: LegacyLineThickness | number;
+              },
+            ) => {
+              if (line.thickness === undefined) line.thickness = 'normaal';
+            },
+          );
       });
 
     // v6 — property-scoped photos. Adds a `propertyId` index to the
@@ -176,6 +187,49 @@ class PropertyUtilityMapperDB extends Dexie {
       photos: 'id, lineId, propertyId, createdAt',
       klicFiles: 'id, propertyId, uploadedAt',
     });
+
+    // v7 — thickness enum → number. Maps the legacy presets to the
+    // pixel-fill widths they rendered at in v2.3.1–v2.3.4, so existing
+    // lines keep their exact visual width:
+    //   'dun'     → 2
+    //   'normaal' → 4
+    //   'dik'     → 6
+    // Anything else (corrupt value, already a number outside [1..8])
+    // falls back to LINE_THICKNESS_DEFAULT (4). Added in v2.3.5.
+    this.version(7)
+      .stores({
+        properties: 'id, city, createdAt',
+        utilityLines: 'id, propertyId, type, createdAt',
+        photos: 'id, lineId, propertyId, createdAt',
+        klicFiles: 'id, propertyId, uploadedAt',
+      })
+      .upgrade(async (tx) => {
+        await tx
+          .table('utilityLines')
+          .toCollection()
+          .modify(
+            (
+              line: Omit<UtilityLine, 'thickness'> & {
+                thickness?: LegacyLineThickness | number;
+              },
+            ) => {
+              const raw = line.thickness;
+              if (raw === 'dun') line.thickness = 2;
+              else if (raw === 'normaal') line.thickness = 4;
+              else if (raw === 'dik') line.thickness = 6;
+              else if (
+                typeof raw === 'number' &&
+                Number.isInteger(raw) &&
+                raw >= 1 &&
+                raw <= 8
+              ) {
+                // already numeric and in range — keep as-is.
+              } else {
+                line.thickness = LINE_THICKNESS_DEFAULT;
+              }
+            },
+          );
+      });
   }
 }
 

@@ -310,6 +310,81 @@ describe('Dexie migrations — plumbing', () => {
     expect(byProperty.map((p) => p.id)).toEqual(['prop-scoped']);
   });
 
+  it('(h) v2.3.4 -> v2.3.5 thickness migration: "dun"/"normaal"/"dik" become 2/4/6 (corrupt → 4)', async () => {
+    // Mirrors the real-world v6 -> v7 upgrade in src/db/dexie.ts. The
+    // legacy three-value enum is replaced by a plain number; existing
+    // lines keep the same visual fill width they rendered at under
+    // the enum:
+    //   'dun'     -> 2
+    //   'normaal' -> 4
+    //   'dik'     -> 6
+    //   anything else -> 4 (the v2.3.5 default)
+    const name = dbName('h');
+
+    interface LineV6Shape {
+      id: string;
+      propertyId: string;
+      type: string;
+      thickness: 'dun' | 'normaal' | 'dik' | 'weird' | number;
+    }
+    interface LineV7Shape {
+      id: string;
+      propertyId: string;
+      type: string;
+      thickness: number;
+    }
+
+    const v6 = new Dexie(name) as Dexie & {
+      utilityLines: Table<LineV6Shape, string>;
+    };
+    v6.version(6).stores({ utilityLines: 'id, propertyId, type' });
+    openDbs.push(v6);
+    await v6.utilityLines.bulkAdd([
+      { id: 'thin',   propertyId: 'p1', type: 'water', thickness: 'dun' },
+      { id: 'normal', propertyId: 'p1', type: 'gas',   thickness: 'normaal' },
+      { id: 'thick',  propertyId: 'p1', type: 'electricity', thickness: 'dik' },
+      { id: 'weird',  propertyId: 'p1', type: 'water', thickness: 'weird' as never },
+      { id: 'already-num', propertyId: 'p1', type: 'water', thickness: 7 },
+    ]);
+    v6.close();
+
+    const v7 = new Dexie(name) as Dexie & {
+      utilityLines: Table<LineV7Shape, string>;
+    };
+    v7.version(6).stores({ utilityLines: 'id, propertyId, type' });
+    v7.version(7)
+      .stores({ utilityLines: 'id, propertyId, type' })
+      .upgrade(async (tx) => {
+        await tx
+          .table<LineV7Shape>('utilityLines')
+          .toCollection()
+          .modify((line) => {
+            const raw = line.thickness as unknown;
+            if (raw === 'dun') line.thickness = 2;
+            else if (raw === 'normaal') line.thickness = 4;
+            else if (raw === 'dik') line.thickness = 6;
+            else if (
+              typeof raw === 'number' &&
+              Number.isInteger(raw) &&
+              raw >= 1 &&
+              raw <= 8
+            ) {
+              // keep as-is
+            } else {
+              line.thickness = 4;
+            }
+          });
+      });
+    openDbs.push(v7);
+
+    const migrated = await v7.utilityLines.orderBy('id').toArray();
+    expect(migrated.find((l) => l.id === 'thin')?.thickness).toBe(2);
+    expect(migrated.find((l) => l.id === 'normal')?.thickness).toBe(4);
+    expect(migrated.find((l) => l.id === 'thick')?.thickness).toBe(6);
+    expect(migrated.find((l) => l.id === 'weird')?.thickness).toBe(4);
+    expect(migrated.find((l) => l.id === 'already-num')?.thickness).toBe(7);
+  });
+
   it('(d) a failing db.open() surfaces as a catchable Dexie.VersionError — not a silent crash', async () => {
     // Mocked failure path per the v2.1.6 prompt ("don't actually corrupt
     // anything"). We're asserting the CONTRACT callers get when Dexie

@@ -1,10 +1,9 @@
-import type {
-  LineThickness,
-  Property,
-  UtilityLine,
-  UtilityType,
+import type { Property, UtilityLine, UtilityType } from '../../types';
+import {
+  LINE_THICKNESS_DEFAULT,
+  LINE_THICKNESS_MAX,
+  LINE_THICKNESS_MIN,
 } from '../../types';
-import { LINE_THICKNESSES } from '../../types';
 import { UTILITY_META, UTILITY_TYPES } from '../utilityColors';
 import { db } from '../../db/dexie';
 import { formatDisplayAddress } from '../address';
@@ -230,10 +229,19 @@ function normalizeType(v: unknown): UtilityType {
     : 'water';
 }
 
-function normalizeThickness(v: unknown): LineThickness {
-  return typeof v === 'string' && (LINE_THICKNESSES as readonly string[]).includes(v)
-    ? (v as LineThickness)
-    : 'normaal';
+function normalizeThickness(v: unknown): number {
+  // v2.3.5: accepts numbers 1..8. Also accepts the legacy enum strings
+  // from older exports so import round-trips cleanly with pre-v2.3.5
+  // files. Everything else falls back to the default.
+  if (typeof v === 'number' && Number.isInteger(v)) {
+    if (v < LINE_THICKNESS_MIN) return LINE_THICKNESS_MIN;
+    if (v > LINE_THICKNESS_MAX) return LINE_THICKNESS_MAX;
+    return v;
+  }
+  if (v === 'dun') return 2;
+  if (v === 'normaal') return 4;
+  if (v === 'dik') return 6;
+  return LINE_THICKNESS_DEFAULT;
 }
 
 function asString(v: unknown): string | undefined {

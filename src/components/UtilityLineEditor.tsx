@@ -1,16 +1,14 @@
 import { useState, type FormEvent } from 'react';
-import type { LineThickness, UtilityLine, UtilityType } from '@/types';
-import { LINE_THICKNESSES } from '@/types';
+import type { UtilityLine, UtilityType } from '@/types';
+import {
+  LINE_THICKNESS_MAX,
+  LINE_THICKNESS_MIN,
+} from '@/types';
 import type { UtilityLinePatch } from '@/db/utilityLines';
 import { CASING_COLOR, UTILITY_META, UTILITY_TYPES } from '@/lib/utilityColors';
 import { formatMeters, pathLengthMeters } from '@/lib/distance';
-import {
-  LINE_THICKNESS_LABEL_NL,
-  LINE_WIDTH,
-} from '@/lib/lineThickness';
+import { casingWidth } from '@/lib/lineWidth';
 import { Button } from '@/components/ui/button';
-import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
-import { cn } from '@/lib/utils';
 import {
   Dialog,
   DialogContent,
@@ -29,6 +27,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { Separator } from '@/components/ui/separator';
+import { Slider } from '@/components/ui/slider';
 import PhotoUploader from '@/components/PhotoUploader';
 import PhotoGrid from '@/components/PhotoGrid';
 
@@ -48,7 +47,7 @@ export default function UtilityLineEditor({
   onClose,
 }: UtilityLineEditorProps) {
   const [type, setType] = useState<UtilityType>(line.type);
-  const [thickness, setThickness] = useState<LineThickness>(line.thickness);
+  const [thickness, setThickness] = useState<number>(line.thickness);
   const [depthCm, setDepthCm] = useState(line.depthCm?.toString() ?? '');
   const [material, setMaterial] = useState(line.material ?? '');
   const [diameterMm, setDiameterMm] = useState(line.diameterMm?.toString() ?? '');
@@ -120,37 +119,39 @@ export default function UtilityLineEditor({
           </div>
 
           <div className="flex flex-col gap-1.5">
-            <Label>Dikte</Label>
-            <RadioGroup
-              value={thickness}
-              onValueChange={(v) => setThickness(v as LineThickness)}
+            {/*
+              v2.3.5: Dikte is an integer 1..8 bound to a shadcn Slider.
+              Replaces the 3-preset RadioGroup from v2.3.1 — "a bit thicker
+              than normaal" is a common real need; the slider covers the
+              space between the old presets.
+            */}
+            <div className="flex items-center justify-between">
+              <Label htmlFor="thickness-slider">Dikte</Label>
+              <span
+                aria-live="polite"
+                className="text-sm text-muted-foreground"
+              >
+                {thickness}
+              </span>
+            </div>
+            <Slider
+              id="thickness-slider"
               aria-label="Lijndikte"
-              className="grid grid-cols-3 gap-2"
-            >
-              {LINE_THICKNESSES.map((t) => (
-                <label
-                  key={t}
-                  htmlFor={`thickness-${t}`}
-                  className={cn(
-                    'flex cursor-pointer flex-col items-center gap-1.5 rounded-md border p-2 transition-colors',
-                    thickness === t
-                      ? 'border-primary ring-1 ring-primary'
-                      : 'border-input hover:bg-accent',
-                  )}
-                >
-                  <RadioGroupItem
-                    id={`thickness-${t}`}
-                    value={t}
-                    className="sr-only"
-                  />
-                  <ThicknessPreview
-                    thickness={t}
-                    color={UTILITY_META[type].color}
-                  />
-                  <span className="text-sm">{LINE_THICKNESS_LABEL_NL[t]}</span>
-                </label>
-              ))}
-            </RadioGroup>
+              min={LINE_THICKNESS_MIN}
+              max={LINE_THICKNESS_MAX}
+              step={1}
+              value={[thickness]}
+              onValueChange={(vs) => {
+                const next = vs[0];
+                if (typeof next === 'number' && Number.isInteger(next)) {
+                  setThickness(next);
+                }
+              }}
+            />
+            <ThicknessPreview
+              thickness={thickness}
+              color={UTILITY_META[type].color}
+            />
           </div>
 
           <div className="grid grid-cols-2 gap-3">
@@ -249,26 +250,28 @@ export default function UtilityLineEditor({
 }
 
 /**
- * Small inline SVG that previews a single line at the given thickness,
- * with the standard dark casing underneath. Mirrors what the map will
- * draw, so the user can see Dun/Normaal/Dik at a glance.
+ * Inline SVG preview of a line at the chosen thickness, with the usual
+ * dark casing underneath. Mirrors what the map will draw so the user
+ * can see the effect of the slider at a glance.
  */
 function ThicknessPreview({
   thickness,
   color,
 }: {
-  thickness: LineThickness;
+  thickness: number;
   color: string;
 }) {
-  const { fill, casing } = LINE_WIDTH[thickness];
-  const H = 14;
+  const fill = thickness;
+  const casing = casingWidth(fill);
+  const H = 16;
   const X1 = 4;
-  const X2 = 44;
+  const X2 = 120;
   return (
     <svg
-      width={X2 + X1}
+      width="100%"
       height={H}
       viewBox={`0 0 ${X2 + X1} ${H}`}
+      preserveAspectRatio="xMidYMid meet"
       aria-hidden
     >
       <line

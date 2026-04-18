@@ -2,7 +2,7 @@ import { Fragment } from 'react';
 import { Polyline } from 'react-leaflet';
 import type { UtilityLine, UUID } from '../types';
 import { CASING_COLOR, UTILITY_META } from '../lib/utilityColors';
-import { LINE_WIDTH } from '../lib/lineThickness';
+import { casingWidth } from '../lib/lineWidth';
 
 interface LinesLayerProps {
   lines: UtilityLine[];
@@ -28,7 +28,8 @@ export default function LinesLayer({
   return (
     <>
       {visible.map((line) => {
-        const { fill, casing } = LINE_WIDTH[line.thickness];
+        const fill = line.thickness;
+        const casing = casingWidth(fill);
         return (
           <Fragment key={line.id}>
             <Polyline

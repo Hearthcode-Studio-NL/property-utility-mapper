@@ -19,7 +19,6 @@ import { formatDisplayAddress } from '../lib/address';
 import { ModeToggle } from '@/components/mode-toggle';
 import LayerManagerButton from '@/components/map/LayerManagerButton';
 import { formatMeters, pathLengthMeters } from '../lib/distance';
-import { simplifyPath } from '../lib/simplify';
 import { useGpsWalk } from '../hooks/useGpsWalk';
 import { useLayerSelection } from '@/hooks/useLayerSelection';
 import MapCanvas from '../components/MapCanvas';
@@ -28,7 +27,6 @@ import LinesLayer from '../components/LinesLayer';
 import WalkingLayer from '../components/WalkingLayer';
 import EditableLineLayer from '../components/EditableLineLayer';
 import MeasureLayer from '../components/MeasureLayer';
-import SketchLayer from '../components/SketchLayer';
 import LinesPanel, { type Mode } from '../components/LinesPanel';
 import UtilityLineEditor from '../components/UtilityLineEditor';
 
@@ -58,7 +56,6 @@ export default function Property() {
   const [editingVertices, setEditingVertices] = useState<[number, number][]>([]);
   const [selectedVertexIndex, setSelectedVertexIndex] = useState<number | null>(null);
   const [measurePoints, setMeasurePoints] = useState<[number, number][]>([]);
-  const [sketchPoints, setSketchPoints] = useState<[number, number][]>([]);
   const layerSelection = useLayerSelection();
   const [exporting, setExporting] = useState<ExportKind | null>(null);
   const [exportError, setExportError] = useState<string | null>(null);
@@ -95,16 +92,11 @@ export default function Property() {
 
   const propertyId = id;
   const draftVertices =
-    mode === 'walking'
-      ? gps.points
-      : mode === 'sketching'
-        ? sketchPoints
-        : clickVertices;
+    mode === 'walking' ? gps.points : clickVertices;
   const draftColor = UTILITY_META[draftType].color;
 
   function resetDrafts() {
     setClickVertices([]);
-    setSketchPoints([]);
     gps.reset();
   }
 
@@ -118,11 +110,6 @@ export default function Property() {
     setMode('walking');
   }
 
-  function startSketch() {
-    resetDrafts();
-    setMode('sketching');
-  }
-
   function cancelDraft() {
     resetDrafts();
     setMode('idle');
@@ -130,25 +117,14 @@ export default function Property() {
 
   async function finishDraft() {
     if (draftVertices.length < 2) return;
-    const vertices =
-      mode === 'sketching' ? simplifyPath(draftVertices, 0.3) : draftVertices;
-    if (vertices.length < 2) return;
     await addUtilityLine({
       propertyId,
       type: draftType,
-      vertices,
+      vertices: draftVertices,
       thickness: draftThickness,
     });
     resetDrafts();
     setMode('idle');
-  }
-
-  function startSketchStroke(p: [number, number]) {
-    setSketchPoints([p]);
-  }
-
-  function appendSketchPoint(p: [number, number]) {
-    setSketchPoints((pts) => [...pts, p]);
   }
 
   function undoVertex() {
@@ -288,15 +264,13 @@ export default function Property() {
       ? `${UTILITY_META[draftType].label} tekenen — klik op de kaart`
       : mode === 'walking'
         ? `${UTILITY_META[draftType].label} lopen — beweeg om punten vast te leggen`
-        : mode === 'sketching'
-          ? `${UTILITY_META[draftType].label} schetsen — sleep over de kaart`
-          : mode === 'editing' && editingLineRecord
-            ? `${UTILITY_META[editingLineRecord.type].label} bewerken — sleep punten of klik tussenpunten`
-            : mode === 'measuring'
-              ? measureDistanceLabel
-                ? `Afstand: ${measureDistanceLabel}`
-                : 'Afstand meten — klik op de kaart'
-              : '';
+        : mode === 'editing' && editingLineRecord
+          ? `${UTILITY_META[editingLineRecord.type].label} bewerken — sleep punten of klik tussenpunten`
+          : mode === 'measuring'
+            ? measureDistanceLabel
+              ? `Afstand: ${measureDistanceLabel}`
+              : 'Afstand meten — klik op de kaart'
+            : '';
 
   return (
     <div className="flex min-h-full flex-col md:h-full">
@@ -383,15 +357,6 @@ export default function Property() {
             {mode === 'measuring' && (
               <MeasureLayer points={measurePoints} onPointAdded={addMeasurePoint} />
             )}
-            {mode === 'sketching' && (
-              <SketchLayer
-                points={sketchPoints}
-                color={draftColor}
-                thickness={draftThickness}
-                onStartStroke={startSketchStroke}
-                onAppendPoint={appendSketchPoint}
-              />
-            )}
           </MapCanvas>
           {isDrafting && (
             <div className="pointer-events-none absolute left-1/2 top-3 z-[500] -translate-x-1/2 rounded-full bg-primary/90 px-3 py-1 text-xs font-medium text-primary-foreground shadow-lg">
@@ -419,7 +384,6 @@ export default function Property() {
             onDraftTypeChange={setDraftType}
             onStartDraw={startDraw}
             onStartWalk={startWalk}
-            onStartSketch={startSketch}
             onStartMeasure={startMeasure}
             onFinishDraft={finishDraft}
             onCancelDraft={cancelDraft}

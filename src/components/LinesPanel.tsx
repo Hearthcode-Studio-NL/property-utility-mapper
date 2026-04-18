@@ -13,7 +13,7 @@ import {
 } from '@/components/ui/select';
 import { Separator } from '@/components/ui/separator';
 
-export type Mode = 'idle' | 'drawing' | 'walking' | 'editing' | 'measuring' | 'sketching';
+export type Mode = 'idle' | 'drawing' | 'walking' | 'editing' | 'measuring';
 
 interface LinesPanelProps {
   lines: UtilityLine[];
@@ -31,7 +31,6 @@ interface LinesPanelProps {
   onDraftTypeChange: (t: UtilityType) => void;
   onStartDraw: () => void;
   onStartWalk: () => void;
-  onStartSketch: () => void;
   onStartMeasure: () => void;
   onFinishDraft: () => void;
   onCancelDraft: () => void;
@@ -71,7 +70,6 @@ export default function LinesPanel({
   onDraftTypeChange,
   onStartDraw,
   onStartWalk,
-  onStartSketch,
   onStartMeasure,
   onFinishDraft,
   onCancelDraft,
@@ -115,9 +113,8 @@ export default function LinesPanel({
 
         {mode === 'idle' && (
           <div className="flex flex-col gap-2">
-            <div className="grid grid-cols-3 gap-2">
+            <div className="grid grid-cols-2 gap-2">
               <Button size="sm" onClick={onStartDraw}>Tekenen</Button>
-              <Button size="sm" onClick={onStartSketch}>Schetsen</Button>
               <Button size="sm" onClick={onStartWalk}>Lopen</Button>
             </div>
             <Button variant="outline" size="sm" onClick={onStartMeasure}>
@@ -173,33 +170,6 @@ export default function LinesPanel({
               Loop de leiding. {draftCount} {draftCount === 1 ? 'punt' : 'punten'} vastgelegd.
             </p>
             {gpsError && <p className="text-xs text-destructive">{gpsError}</p>}
-            <div className="flex gap-2">
-              <Button
-                size="sm"
-                className="flex-1"
-                onClick={onFinishDraft}
-                disabled={draftCount < 2}
-              >
-                Klaar
-              </Button>
-              <Button
-                variant="outline"
-                size="sm"
-                className="flex-1"
-                onClick={onCancelDraft}
-              >
-                Annuleren
-              </Button>
-            </div>
-          </div>
-        )}
-
-        {mode === 'sketching' && (
-          <div className="flex flex-col gap-2">
-            <p className="text-xs text-muted-foreground">
-              Sleep over de kaart om te schetsen. {draftCount}{' '}
-              {draftCount === 1 ? 'punt' : 'punten'}.
-            </p>
             <div className="flex gap-2">
               <Button
                 size="sm"

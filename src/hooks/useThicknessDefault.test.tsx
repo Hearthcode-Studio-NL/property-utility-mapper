@@ -5,36 +5,43 @@ import {
   useThicknessDefault,
 } from './useThicknessDefault';
 
-describe('useThicknessDefault', () => {
+describe('useThicknessDefault (v2.3.5 — numeric)', () => {
   beforeEach(() => {
     localStorage.clear();
   });
 
-  it('returns "normaal" when nothing is stored', () => {
+  it('returns 4 when nothing is stored (default)', () => {
     const { result } = renderHook(() => useThicknessDefault());
-    expect(result.current[0]).toBe('normaal');
+    expect(result.current[0]).toBe(4);
   });
 
-  it('reads a valid stored value on mount', () => {
-    localStorage.setItem(THICKNESS_STORAGE_KEY, 'dik');
+  it('reads a valid stored integer on mount', () => {
+    localStorage.setItem(THICKNESS_STORAGE_KEY, '6');
     const { result } = renderHook(() => useThicknessDefault());
-    expect(result.current[0]).toBe('dik');
+    expect(result.current[0]).toBe(6);
   });
 
-  it('falls back to "normaal" if the stored value is outside the enum', () => {
-    localStorage.setItem(THICKNESS_STORAGE_KEY, 'not-a-thickness');
+  it.each([
+    ['non-numeric garbage', 'not-a-number'],
+    ['legacy enum string', 'normaal'],
+    ['below min (0)', '0'],
+    ['above max (9)', '9'],
+    ['float', '3.5'],
+    ['empty string', ''],
+  ])('falls back to 4 for %s', (_label, stored) => {
+    localStorage.setItem(THICKNESS_STORAGE_KEY, stored);
     const { result } = renderHook(() => useThicknessDefault());
-    expect(result.current[0]).toBe('normaal');
+    expect(result.current[0]).toBe(4);
   });
 
   it('persists setter updates to localStorage and a fresh mount reads them back', () => {
     const first = renderHook(() => useThicknessDefault());
-    act(() => first.result.current[1]('dik'));
-    expect(localStorage.getItem(THICKNESS_STORAGE_KEY)).toBe('dik');
+    act(() => first.result.current[1](7));
+    expect(localStorage.getItem(THICKNESS_STORAGE_KEY)).toBe('7');
 
     first.unmount();
 
     const second = renderHook(() => useThicknessDefault());
-    expect(second.result.current[0]).toBe('dik');
+    expect(second.result.current[0]).toBe(7);
   });
 });

@@ -36,7 +36,7 @@ describe('addUtilityLine — thickness defaulting (v2.3.1)', () => {
     await resetDb();
   });
 
-  it('defaults thickness to "normaal" when the caller omits it', async () => {
+  it('defaults thickness to 4 when the caller omits it (v2.3.5)', async () => {
     const propertyId = await seedProperty();
     const line = await addUtilityLine({
       propertyId,
@@ -46,11 +46,11 @@ describe('addUtilityLine — thickness defaulting (v2.3.1)', () => {
         [1.1, 2.1],
       ],
     });
-    expect(line.thickness).toBe('normaal');
-    expect((await db.utilityLines.get(line.id))?.thickness).toBe('normaal');
+    expect(line.thickness).toBe(4);
+    expect((await db.utilityLines.get(line.id))?.thickness).toBe(4);
   });
 
-  it('persists the explicit thickness when the caller provides one', async () => {
+  it('persists the explicit numeric thickness when the caller provides one', async () => {
     const propertyId = await seedProperty();
     const line = await addUtilityLine({
       propertyId,
@@ -59,8 +59,8 @@ describe('addUtilityLine — thickness defaulting (v2.3.1)', () => {
         [1, 2],
         [1.1, 2.1],
       ],
-      thickness: 'dik',
+      thickness: 6,
     });
-    expect(line.thickness).toBe('dik');
+    expect(line.thickness).toBe(6);
   });
 });

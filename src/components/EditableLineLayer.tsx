@@ -3,13 +3,13 @@ import { Marker, Polyline, useMap } from 'react-leaflet';
 import L from 'leaflet';
 import { findSnapTarget, type Coord } from '../lib/snap';
 import { CASING_COLOR } from '../lib/utilityColors';
-import { LINE_WIDTH } from '../lib/lineThickness';
-import type { LineThickness } from '../types';
+import { casingWidth } from '../lib/lineWidth';
 
 interface EditableLineLayerProps {
   vertices: Coord[];
   color: string;
-  thickness: LineThickness;
+  /** Integer 1..8 — fill stroke width; casing is fill + 3 (v2.3.5). */
+  thickness: number;
   selectedIndex: number | null;
   onVertexMove: (index: number, pos: Coord) => void;
   onVertexMoveEnd: () => void;
@@ -30,7 +30,8 @@ export default function EditableLineLayer({
   snapCandidates = [],
 }: EditableLineLayerProps) {
   const map = useMap();
-  const { fill, casing } = LINE_WIDTH[thickness];
+  const fill = thickness;
+  const casing = casingWidth(fill);
 
   const vertexIcon = useMemo(
     () =>
