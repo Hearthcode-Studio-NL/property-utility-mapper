@@ -18,7 +18,13 @@
  * fallbacks.
  */
 import Dexie, { type Table } from 'dexie';
-import type { KlicFile, Photo, Property, UtilityLine } from '../types';
+import type {
+  KlicFile,
+  LineThickness,
+  Photo,
+  Property,
+  UtilityLine,
+} from '../types';
 
 class PropertyUtilityMapperDB extends Dexie {
   properties!: Table<Property, string>;
@@ -136,6 +142,26 @@ class PropertyUtilityMapperDB extends Dexie {
           .modify((p: Property & { notes?: string | null; coverPhotoId?: UUID | null }) => {
             if (p.notes === undefined) p.notes = null;
             if (p.coverPhotoId === undefined) p.coverPhotoId = null;
+          });
+      });
+
+    // v5 — line thickness. Adds a `thickness` enum field to every
+    // UtilityLine, backfilled to 'normaal' for existing rows. No index
+    // change — thickness isn't queryable, only read per line. Added in
+    // v2.3.1.
+    this.version(5)
+      .stores({
+        properties: 'id, city, createdAt',
+        utilityLines: 'id, propertyId, type, createdAt',
+        photos: 'id, lineId, createdAt',
+        klicFiles: 'id, propertyId, uploadedAt',
+      })
+      .upgrade(async (tx) => {
+        await tx
+          .table('utilityLines')
+          .toCollection()
+          .modify((line: UtilityLine & { thickness?: LineThickness }) => {
+            if (line.thickness === undefined) line.thickness = 'normaal';
           });
       });
   }

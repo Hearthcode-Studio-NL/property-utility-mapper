@@ -1,4 +1,4 @@
-import type { UtilityLine, UtilityType, UUID } from '../types';
+import type { LineThickness, UtilityLine, UtilityType, UUID } from '../types';
 import { generateId } from '../lib/ids';
 import { db } from './dexie';
 import { deletePhotosForLineTx } from './photos';
@@ -7,6 +7,12 @@ export interface NewUtilityLineInput {
   propertyId: UUID;
   type: UtilityType;
   vertices: [number, number][];
+  /**
+   * Stroke-width preset. Optional at call-site — callers without a
+   * preference (e.g. GeoJSON import, seed scripts) get 'normaal' so
+   * every persisted line has a defined thickness.
+   */
+  thickness?: LineThickness;
 }
 
 export async function addUtilityLine(input: NewUtilityLineInput): Promise<UtilityLine> {
@@ -16,6 +22,7 @@ export async function addUtilityLine(input: NewUtilityLineInput): Promise<Utilit
     propertyId: input.propertyId,
     type: input.type,
     vertices: input.vertices,
+    thickness: input.thickness ?? 'normaal',
     photoIds: [],
     createdAt: now,
     updatedAt: now,

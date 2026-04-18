@@ -1,9 +1,16 @@
 import { useState, type FormEvent } from 'react';
-import type { UtilityLine, UtilityType } from '@/types';
+import type { LineThickness, UtilityLine, UtilityType } from '@/types';
+import { LINE_THICKNESSES } from '@/types';
 import type { UtilityLinePatch } from '@/db/utilityLines';
-import { UTILITY_META, UTILITY_TYPES } from '@/lib/utilityColors';
+import { CASING_COLOR, UTILITY_META, UTILITY_TYPES } from '@/lib/utilityColors';
 import { formatMeters, pathLengthMeters } from '@/lib/distance';
+import {
+  LINE_THICKNESS_LABEL_NL,
+  LINE_WIDTH,
+} from '@/lib/lineThickness';
 import { Button } from '@/components/ui/button';
+import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
+import { cn } from '@/lib/utils';
 import {
   Dialog,
   DialogContent,
@@ -41,6 +48,7 @@ export default function UtilityLineEditor({
   onClose,
 }: UtilityLineEditorProps) {
   const [type, setType] = useState<UtilityType>(line.type);
+  const [thickness, setThickness] = useState<LineThickness>(line.thickness);
   const [depthCm, setDepthCm] = useState(line.depthCm?.toString() ?? '');
   const [material, setMaterial] = useState(line.material ?? '');
   const [diameterMm, setDiameterMm] = useState(line.diameterMm?.toString() ?? '');
@@ -50,6 +58,7 @@ export default function UtilityLineEditor({
   function applyChanges() {
     onSave({
       type,
+      thickness,
       depthCm: depthCm === '' ? undefined : Number(depthCm),
       material: material.trim() || undefined,
       diameterMm: diameterMm === '' ? undefined : Number(diameterMm),
@@ -108,6 +117,40 @@ export default function UtilityLineEditor({
                 {formatMeters(pathLengthMeters(line.vertices))}
               </div>
             </div>
+          </div>
+
+          <div className="flex flex-col gap-1.5">
+            <Label>Dikte</Label>
+            <RadioGroup
+              value={thickness}
+              onValueChange={(v) => setThickness(v as LineThickness)}
+              aria-label="Lijndikte"
+              className="grid grid-cols-3 gap-2"
+            >
+              {LINE_THICKNESSES.map((t) => (
+                <label
+                  key={t}
+                  htmlFor={`thickness-${t}`}
+                  className={cn(
+                    'flex cursor-pointer flex-col items-center gap-1.5 rounded-md border p-2 transition-colors',
+                    thickness === t
+                      ? 'border-primary ring-1 ring-primary'
+                      : 'border-input hover:bg-accent',
+                  )}
+                >
+                  <RadioGroupItem
+                    id={`thickness-${t}`}
+                    value={t}
+                    className="sr-only"
+                  />
+                  <ThicknessPreview
+                    thickness={t}
+                    color={UTILITY_META[type].color}
+                  />
+                  <span className="text-sm">{LINE_THICKNESS_LABEL_NL[t]}</span>
+                </label>
+              ))}
+            </RadioGroup>
           </div>
 
           <div className="grid grid-cols-2 gap-3">
@@ -198,5 +241,50 @@ export default function UtilityLineEditor({
         </DialogFooter>
       </DialogContent>
     </Dialog>
+  );
+}
+
+/**
+ * Small inline SVG that previews a single line at the given thickness,
+ * with the standard dark casing underneath. Mirrors what the map will
+ * draw, so the user can see Dun/Normaal/Dik at a glance.
+ */
+function ThicknessPreview({
+  thickness,
+  color,
+}: {
+  thickness: LineThickness;
+  color: string;
+}) {
+  const { fill, casing } = LINE_WIDTH[thickness];
+  const H = 14;
+  const X1 = 4;
+  const X2 = 44;
+  return (
+    <svg
+      width={X2 + X1}
+      height={H}
+      viewBox={`0 0 ${X2 + X1} ${H}`}
+      aria-hidden
+    >
+      <line
+        x1={X1}
+        y1={H / 2}
+        x2={X2}
+        y2={H / 2}
+        stroke={CASING_COLOR}
+        strokeWidth={casing}
+        strokeLinecap="round"
+      />
+      <line
+        x1={X1}
+        y1={H / 2}
+        x2={X2}
+        y2={H / 2}
+        stroke={color}
+        strokeWidth={fill}
+        strokeLinecap="round"
+      />
+    </svg>
   );
 }

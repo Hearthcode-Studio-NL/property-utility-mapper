@@ -216,6 +216,55 @@ describe('Dexie migrations — plumbing', () => {
     });
   });
 
+  it('(f) v2.3.0 -> v2.3.1 backfill: existing utility lines receive thickness="normaal"', async () => {
+    // Mirrors the real-world v4 -> v5 upgrade in src/db/dexie.ts. A
+    // line saved before v2.3.1 has no `thickness`; after the upgrade
+    // every row has it set to the safe default "normaal".
+    const name = dbName('f');
+
+    interface LineV4Shape {
+      id: string;
+      propertyId: string;
+      type: string;
+    }
+    interface LineV5Shape extends LineV4Shape {
+      thickness: 'dun' | 'normaal' | 'dik';
+    }
+
+    const v4 = new Dexie(name) as Dexie & {
+      utilityLines: Table<LineV4Shape, string>;
+    };
+    v4.version(4).stores({ utilityLines: 'id, propertyId, type' });
+    openDbs.push(v4);
+    await v4.utilityLines.bulkAdd([
+      { id: 'legacy-1', propertyId: 'p1', type: 'water' },
+      { id: 'legacy-2', propertyId: 'p1', type: 'gas' },
+    ]);
+    v4.close();
+
+    const v5 = new Dexie(name) as Dexie & {
+      utilityLines: Table<LineV5Shape, string>;
+    };
+    v5.version(4).stores({ utilityLines: 'id, propertyId, type' });
+    v5.version(5)
+      .stores({ utilityLines: 'id, propertyId, type' })
+      .upgrade(async (tx) => {
+        await tx
+          .table<LineV5Shape>('utilityLines')
+          .toCollection()
+          .modify((l) => {
+            if (l.thickness === undefined) l.thickness = 'normaal';
+          });
+      });
+    openDbs.push(v5);
+
+    const migrated = await v5.utilityLines.orderBy('id').toArray();
+    expect(migrated).toEqual([
+      { id: 'legacy-1', propertyId: 'p1', type: 'water', thickness: 'normaal' },
+      { id: 'legacy-2', propertyId: 'p1', type: 'gas', thickness: 'normaal' },
+    ]);
+  });
+
   it('(d) a failing db.open() surfaces as a catchable Dexie.VersionError — not a silent crash', async () => {
     // Mocked failure path per the v2.1.6 prompt ("don't actually corrupt
     // anything"). We're asserting the CONTRACT callers get when Dexie

@@ -14,6 +14,7 @@ import {
 } from '../db/utilityLines';
 import type { UtilityLine, UtilityType, UUID } from '../types';
 import { UTILITY_META } from '../lib/utilityColors';
+import { useThicknessDefault } from '../hooks/useThicknessDefault';
 import { formatDisplayAddress } from '../lib/address';
 import { ModeToggle } from '@/components/mode-toggle';
 import LayerManagerButton from '@/components/map/LayerManagerButton';
@@ -50,6 +51,7 @@ export default function Property() {
   const [mode, setMode] = useState<Mode>('idle');
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [draftType, setDraftType] = useState<UtilityType>('water');
+  const [draftThickness, setDraftThickness] = useThicknessDefault();
   const [clickVertices, setClickVertices] = useState<[number, number][]>([]);
   const [editingLineId, setEditingLineId] = useState<UUID | null>(null);
   const [editingGeometryLineId, setEditingGeometryLineId] = useState<UUID | null>(null);
@@ -135,6 +137,7 @@ export default function Property() {
       propertyId,
       type: draftType,
       vertices,
+      thickness: draftThickness,
     });
     resetDrafts();
     setMode('idle');
@@ -159,6 +162,9 @@ export default function Property() {
   async function saveLine(patch: UtilityLinePatch) {
     if (!editingLineId) return;
     await updateUtilityLine(editingLineId, patch);
+    // Remember the user's thickness choice as the default for the next
+    // fresh line — persisted via useThicknessDefault's localStorage write.
+    if (patch.thickness) setDraftThickness(patch.thickness);
     setEditingLineId(null);
   }
 
@@ -339,6 +345,7 @@ export default function Property() {
               <DrawingLayer
                 vertices={clickVertices}
                 color={draftColor}
+                thickness={draftThickness}
                 onVertexAdded={addVertex}
                 snapCandidates={drawingSnapCandidates}
               />
@@ -355,6 +362,7 @@ export default function Property() {
               <EditableLineLayer
                 vertices={editingVertices}
                 color={editingColor}
+                thickness={editingLineRecord?.thickness ?? draftThickness}
                 selectedIndex={selectedVertexIndex}
                 onVertexMove={onVertexMove}
                 onVertexMoveEnd={onVertexMoveEnd}
@@ -370,6 +378,7 @@ export default function Property() {
               <SketchLayer
                 points={sketchPoints}
                 color={draftColor}
+                thickness={draftThickness}
                 onStartStroke={startSketchStroke}
                 onAppendPoint={appendSketchPoint}
               />

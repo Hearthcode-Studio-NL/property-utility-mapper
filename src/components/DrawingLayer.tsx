@@ -1,10 +1,13 @@
 import { CircleMarker, Polyline, useMap, useMapEvents } from 'react-leaflet';
 import { findSnapTarget, type Coord } from '../lib/snap';
 import { CASING_COLOR } from '../lib/utilityColors';
+import { LINE_WIDTH } from '../lib/lineThickness';
+import type { LineThickness } from '../types';
 
 interface DrawingLayerProps {
   vertices: Coord[];
   color: string;
+  thickness: LineThickness;
   onVertexAdded: (v: Coord) => void;
   snapCandidates?: Coord[];
 }
@@ -12,10 +15,12 @@ interface DrawingLayerProps {
 export default function DrawingLayer({
   vertices,
   color,
+  thickness,
   onVertexAdded,
   snapCandidates = [],
 }: DrawingLayerProps) {
   const map = useMap();
+  const { fill, casing } = LINE_WIDTH[thickness];
 
   useMapEvents({
     click(e) {
@@ -37,7 +42,7 @@ export default function DrawingLayer({
             positions={vertices}
             pathOptions={{
               color: CASING_COLOR,
-              weight: 7,
+              weight: casing,
               dashArray: '6,8',
               opacity: 0.9,
               interactive: false,
@@ -45,7 +50,7 @@ export default function DrawingLayer({
           />
           <Polyline
             positions={vertices}
-            pathOptions={{ color, weight: 4, dashArray: '6,8', interactive: false }}
+            pathOptions={{ color, weight: fill, dashArray: '6,8', interactive: false }}
           />
         </>
       )}

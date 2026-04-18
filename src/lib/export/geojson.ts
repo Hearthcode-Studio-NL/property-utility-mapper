@@ -1,4 +1,10 @@
-import type { Property, UtilityLine, UtilityType } from '../../types';
+import type {
+  LineThickness,
+  Property,
+  UtilityLine,
+  UtilityType,
+} from '../../types';
+import { LINE_THICKNESSES } from '../../types';
 import { UTILITY_META, UTILITY_TYPES } from '../utilityColors';
 import { db } from '../../db/dexie';
 import { formatDisplayAddress } from '../address';
@@ -65,6 +71,7 @@ export function buildGeoJson(
         type: line.type,
         typeLabel: UTILITY_META[line.type].label,
         color: UTILITY_META[line.type].color,
+        thickness: line.thickness,
         depthCm: line.depthCm,
         material: line.material,
         diameterMm: line.diameterMm,
@@ -163,6 +170,10 @@ export async function importGeoJsonFromText(text: string): Promise<ImportResult>
       propertyId: property.id,
       type: normalizeType(feature.properties?.type),
       vertices: rawCoords.map(([ln, lt]) => [lt, ln]),
+      // v2.3.1: thickness round-trips via GeoJSON when present, defaults
+      // to 'normaal' otherwise. Older exports (pre-v2.3.1) don't carry
+      // the field, so every imported line lands at a sane preset.
+      thickness: normalizeThickness(feature.properties?.thickness),
       depthCm: asNumber(feature.properties?.depthCm),
       material: asString(feature.properties?.material),
       diameterMm: asNumber(feature.properties?.diameterMm),
@@ -217,6 +228,12 @@ function normalizeType(v: unknown): UtilityType {
   return typeof v === 'string' && (UTILITY_TYPES as string[]).includes(v)
     ? (v as UtilityType)
     : 'water';
+}
+
+function normalizeThickness(v: unknown): LineThickness {
+  return typeof v === 'string' && (LINE_THICKNESSES as readonly string[]).includes(v)
+    ? (v as LineThickness)
+    : 'normaal';
 }
 
 function asString(v: unknown): string | undefined {

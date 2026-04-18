@@ -182,6 +182,7 @@ export async function duplicateProperty(
           propertyId: cloned.id,
           type: line.type,
           vertices: line.vertices.map(([lat, lng]) => [lat, lng]),
+          thickness: line.thickness,
           depthCm: line.depthCm,
           material: line.material,
           diameterMm: line.diameterMm,

@@ -2,6 +2,7 @@ import { Fragment } from 'react';
 import { Polyline } from 'react-leaflet';
 import type { UtilityLine, UUID } from '../types';
 import { CASING_COLOR, UTILITY_META } from '../lib/utilityColors';
+import { LINE_WIDTH } from '../lib/lineThickness';
 
 interface LinesLayerProps {
   lines: UtilityLine[];
@@ -14,8 +15,8 @@ interface LinesLayerProps {
 // Rendering two Polylines per line, casing-first, produces the outline effect.
 // Keeping the click / hover interactivity on the TOP stroke so interaction
 // hit-testing matches the visible colour and casing geometry is irrelevant.
-const FILL_WEIGHT = 5;
-const CASING_WEIGHT = 8;
+// Widths now come from the per-line `thickness` field (v2.3.1), mapped
+// through LINE_WIDTH so the 1.5-px halo stays proportional.
 
 export default function LinesLayer({
   lines,
@@ -26,31 +27,34 @@ export default function LinesLayer({
   const visible = hideLineId ? lines.filter((l) => l.id !== hideLineId) : lines;
   return (
     <>
-      {visible.map((line) => (
-        <Fragment key={line.id}>
-          <Polyline
-            positions={line.vertices}
-            pathOptions={{
-              color: CASING_COLOR,
-              weight: CASING_WEIGHT,
-              opacity: 0.9,
-              interactive: false,
-            }}
-          />
-          <Polyline
-            positions={line.vertices}
-            pathOptions={{
-              color: UTILITY_META[line.type].color,
-              weight: FILL_WEIGHT,
-              opacity: 1,
-              interactive,
-            }}
-            eventHandlers={
-              interactive && onLineClick ? { click: () => onLineClick(line.id) } : undefined
-            }
-          />
-        </Fragment>
-      ))}
+      {visible.map((line) => {
+        const { fill, casing } = LINE_WIDTH[line.thickness];
+        return (
+          <Fragment key={line.id}>
+            <Polyline
+              positions={line.vertices}
+              pathOptions={{
+                color: CASING_COLOR,
+                weight: casing,
+                opacity: 0.9,
+                interactive: false,
+              }}
+            />
+            <Polyline
+              positions={line.vertices}
+              pathOptions={{
+                color: UTILITY_META[line.type].color,
+                weight: fill,
+                opacity: 1,
+                interactive,
+              }}
+              eventHandlers={
+                interactive && onLineClick ? { click: () => onLineClick(line.id) } : undefined
+              }
+            />
+          </Fragment>
+        );
+      })}
     </>
   );
 }

@@ -30,6 +30,7 @@ function makeLine(): UtilityLine {
       [52.3676, 4.9041],
       [52.3677, 4.9042],
     ],
+    thickness: 'normaal',
     photoIds: [],
     createdAt: '2026-04-01T10:05:00.000Z',
     updatedAt: '2026-04-01T10:05:00.000Z',

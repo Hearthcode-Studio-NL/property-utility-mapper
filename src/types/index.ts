@@ -11,6 +11,19 @@ export type UtilityType =
   | 'garden-lighting'
   | 'drainage';
 
+/**
+ * One of three stroke-width presets for a drawn line. Added in v2.3.1.
+ * Kept as an enum rather than a raw pixel number so the design system
+ * can tune the visual relationship (and the line casing) centrally.
+ */
+export type LineThickness = 'dun' | 'normaal' | 'dik';
+
+export const LINE_THICKNESSES: readonly LineThickness[] = [
+  'dun',
+  'normaal',
+  'dik',
+];
+
 export interface Property {
   id: UUID;
 
@@ -47,6 +60,12 @@ export interface UtilityLine {
   propertyId: UUID;
   type: UtilityType;
   vertices: [number, number][];
+  /**
+   * Stroke-width preset. Added in v2.3.1 — pre-existing lines were
+   * backfilled to 'normaal' by the v4→v5 Dexie migration, so every
+   * line on disk has this field.
+   */
+  thickness: LineThickness;
   depthCm?: number;
   material?: string;
   diameterMm?: number;

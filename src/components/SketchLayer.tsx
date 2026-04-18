@@ -2,10 +2,13 @@ import { useEffect, useRef } from 'react';
 import { Polyline, useMap, useMapEvents } from 'react-leaflet';
 import type { Coord } from '../lib/snap';
 import { CASING_COLOR } from '../lib/utilityColors';
+import { LINE_WIDTH } from '../lib/lineThickness';
+import type { LineThickness } from '../types';
 
 interface SketchLayerProps {
   points: Coord[];
   color: string;
+  thickness: LineThickness;
   onStartStroke: (p: Coord) => void;
   onAppendPoint: (p: Coord) => void;
 }
@@ -15,9 +18,11 @@ const MIN_PIXEL_STEP = 4;
 export default function SketchLayer({
   points,
   color,
+  thickness,
   onStartStroke,
   onAppendPoint,
 }: SketchLayerProps) {
+  const { fill, casing } = LINE_WIDTH[thickness];
   const map = useMap();
   const activeRef = useRef(false);
   const lastPixelRef = useRef<{ x: number; y: number } | null>(null);
@@ -61,7 +66,7 @@ export default function SketchLayer({
         positions={points}
         pathOptions={{
           color: CASING_COLOR,
-          weight: 7,
+          weight: casing,
           dashArray: '6,8',
           opacity: 0.9,
           interactive: false,
@@ -71,7 +76,7 @@ export default function SketchLayer({
         positions={points}
         pathOptions={{
           color,
-          weight: 4,
+          weight: fill,
           dashArray: '6,8',
           interactive: false,
         }}
