@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { db } from './dexie';
 import {
   addProperty,
@@ -9,6 +9,7 @@ import {
   type NewPropertyInput,
 } from './properties';
 import { addUtilityLine } from './utilityLines';
+import type { Photo } from '../types';
 
 function makeInput(overrides: Partial<NewPropertyInput> = {}): NewPropertyInput {
   return {
@@ -137,5 +138,99 @@ describe('db/properties', () => {
     const remainingLines = await db.utilityLines.toArray();
     expect(remainingLines).toHaveLength(1);
     expect(remainingLines[0]?.propertyId).toBe(kept.id);
+  });
+
+  it('deleteProperty cascades to photos of every line of that property', async () => {
+    const doomed = await addProperty(makeInput({ street: 'WithPhotos' }));
+    const line = await addUtilityLine({
+      propertyId: doomed.id,
+      type: 'water',
+      vertices: [
+        [1, 2],
+        [1.1, 2.1],
+      ],
+    });
+    // Seed photos directly so we don't need to pull in the real image
+    // resize / encode pipeline — this suite tests the cascade only.
+    const photo: Photo = {
+      id: 'photo-1',
+      lineId: line.id,
+      blob: new Blob(['raw'], { type: 'image/jpeg' }),
+      thumbnailBlob: new Blob(['thumb'], { type: 'image/jpeg' }),
+      mimeType: 'image/jpeg',
+      createdAt: new Date().toISOString(),
+    };
+    await db.photos.add(photo);
+    await db.utilityLines.update(line.id, { photoIds: [photo.id] });
+
+    await deleteProperty(doomed.id);
+
+    expect(await db.properties.toArray()).toHaveLength(0);
+    expect(await db.utilityLines.toArray()).toHaveLength(0);
+    expect(await db.photos.toArray()).toHaveLength(0);
+  });
+
+  it('deleteProperty cascades to klicFiles tied to the property', async () => {
+    const doomed = await addProperty(makeInput({ street: 'WithKlic' }));
+    await db.klicFiles.add({
+      id: 'klic-1',
+      propertyId: doomed.id,
+      filename: 'k.pdf',
+      blob: new Blob(['pdf'], { type: 'application/pdf' }),
+      uploadedAt: new Date().toISOString(),
+    });
+
+    await deleteProperty(doomed.id);
+
+    expect(await db.klicFiles.toArray()).toHaveLength(0);
+  });
+
+  it('deleteProperty for a missing id is a no-op', async () => {
+    const kept = await addProperty(makeInput({ street: 'Survivor' }));
+    await expect(deleteProperty('does-not-exist')).resolves.toBeUndefined();
+    expect(await db.properties.toArray()).toHaveLength(1);
+    expect(await db.properties.toArray()).toEqual([kept]);
+  });
+
+  it('deleteProperty rolls the transaction back if any step fails — no orphans', async () => {
+    const doomed = await addProperty(makeInput({ street: 'RollsBack' }));
+    const line = await addUtilityLine({
+      propertyId: doomed.id,
+      type: 'water',
+      vertices: [
+        [1, 2],
+        [1.1, 2.1],
+      ],
+    });
+    // Seed a photo so the cascade has something to delete before the
+    // sabotaged step runs. If rollback works, the photo must still exist
+    // after the failed deleteProperty call.
+    await db.photos.add({
+      id: 'photo-rollback',
+      lineId: line.id,
+      blob: new Blob(['raw'], { type: 'image/jpeg' }),
+      thumbnailBlob: new Blob(['thumb'], { type: 'image/jpeg' }),
+      mimeType: 'image/jpeg',
+      createdAt: new Date().toISOString(),
+    });
+    await db.utilityLines.update(line.id, { photoIds: ['photo-rollback'] });
+
+    // Sabotage: make the klicFiles.where(...) call throw. deleteProperty
+    // invokes that after photos + lines have already been touched. Dexie
+    // aborts the transaction on an uncaught throw inside the callback,
+    // which reverts every prior op in the same transaction.
+    const whereSpy = vi.spyOn(db.klicFiles, 'where').mockImplementationOnce(() => {
+      throw new Error('Simulated IDB failure mid-transaction');
+    });
+
+    await expect(deleteProperty(doomed.id)).rejects.toThrow(
+      /Simulated IDB failure/,
+    );
+    whereSpy.mockRestore();
+
+    // Nothing orphaned — everything we had before the call is still there.
+    expect(await db.properties.toArray()).toHaveLength(1);
+    expect(await db.utilityLines.toArray()).toHaveLength(1);
+    expect(await db.photos.toArray()).toHaveLength(1);
   });
 });

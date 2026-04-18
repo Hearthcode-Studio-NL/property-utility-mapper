@@ -139,6 +139,74 @@ describe('Home', () => {
     expect(await db.properties.toArray()).toHaveLength(0);
   });
 
+  it('cancelling the delete dialog keeps the property in the DB', async () => {
+    const seeded = await addProperty({
+      street: 'Prinsengracht',
+      houseNumber: '263',
+      city: 'Amsterdam',
+      fullAddress:
+        'Prinsengracht 263, 1016 GV Amsterdam, Noord-Holland, Nederland',
+      centerLat: 52.375,
+      centerLng: 4.884,
+    });
+
+    const user = userEvent.setup();
+    renderApp();
+
+    await user.click(
+      await screen.findByRole('button', {
+        name: /Prinsengracht 263, Amsterdam verwijderen/i,
+      }),
+    );
+
+    // AlertDialog opens — confirm its Dutch copy is in place.
+    expect(
+      screen.getByRole('heading', { name: /Adres verwijderen\?/ }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        /Dit verwijdert het adres, alle leidingen en alle foto's\. Dit kan niet ongedaan worden gemaakt\./,
+      ),
+    ).toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: /Annuleren/ }));
+
+    // Property untouched, no delete toast fired.
+    const still = await db.properties.toArray();
+    expect(still.map((p) => p.id)).toEqual([seeded.id]);
+    expect(toast.success).not.toHaveBeenCalled();
+  });
+
+  it('confirming the delete dialog removes the property and toasts success', async () => {
+    await addProperty({
+      street: 'Singel',
+      houseNumber: '7',
+      city: 'Amsterdam',
+      fullAddress: 'Singel 7, 1012 VC Amsterdam, Noord-Holland, Nederland',
+      centerLat: 52.373,
+      centerLng: 4.892,
+    });
+
+    const user = userEvent.setup();
+    renderApp();
+
+    await user.click(
+      await screen.findByRole('button', {
+        name: /Singel 7, Amsterdam verwijderen/i,
+      }),
+    );
+    await user.click(screen.getByRole('button', { name: /^Verwijder$/ }));
+
+    await waitFor(async () => {
+      expect(await db.properties.toArray()).toHaveLength(0);
+    });
+    expect(toast.success).toHaveBeenCalledWith('Adres verwijderd');
+    // UI reflects the delete — the link for Singel is gone.
+    expect(
+      screen.queryByRole('link', { name: /Singel 7, Amsterdam/i }),
+    ).not.toBeInTheDocument();
+  });
+
   it('lists saved properties using formatDisplayAddress and navigates on click', async () => {
     const created = await addProperty({
       street: 'Keizersgracht',

@@ -1,7 +1,9 @@
 import { useMemo, useRef, useState } from 'react';
-import { Link, useParams } from 'react-router-dom';
+import { Link, useNavigate, useParams } from 'react-router-dom';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { getProperty } from '../db/properties';
+import DeletePropertyDialog from '@/components/DeletePropertyDialog';
+import { Button } from '@/components/ui/button';
 import {
   addUtilityLine,
   deleteUtilityLine,
@@ -32,6 +34,7 @@ type ExportKind = 'geojson' | 'png' | 'pdf';
 
 export default function Property() {
   const { id } = useParams<{ id: string }>();
+  const navigate = useNavigate();
 
   const property = useLiveQuery(
     async () => (id ? ((await getProperty(id)) ?? null) : null),
@@ -44,6 +47,7 @@ export default function Property() {
   );
 
   const [mode, setMode] = useState<Mode>('idle');
+  const [deleteOpen, setDeleteOpen] = useState(false);
   const [draftType, setDraftType] = useState<UtilityType>('water');
   const [clickVertices, setClickVertices] = useState<[number, number][]>([]);
   const [editingLineId, setEditingLineId] = useState<UUID | null>(null);
@@ -300,6 +304,14 @@ export default function Property() {
           <span className="text-xs text-muted-foreground">
             {property.centerLat.toFixed(5)}, {property.centerLng.toFixed(5)}
           </span>
+          <Button
+            variant="ghost"
+            size="sm"
+            className="text-destructive hover:bg-destructive/10 hover:text-destructive"
+            onClick={() => setDeleteOpen(true)}
+          >
+            Verwijder adres
+          </Button>
           <ModeToggle />
         </div>
       </header>
@@ -412,6 +424,13 @@ export default function Property() {
           onClose={() => setEditingLineId(null)}
         />
       )}
+
+      <DeletePropertyDialog
+        property={property}
+        open={deleteOpen}
+        onOpenChange={setDeleteOpen}
+        onDeleted={() => navigate('/')}
+      />
     </div>
   );
 }

@@ -1,13 +1,14 @@
-import { useRef, useState, type ChangeEvent } from 'react';
+import { useMemo, useRef, useState, type ChangeEvent } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { MapPin } from 'lucide-react';
 import { toast } from 'sonner';
 
-import { deleteProperty, listProperties } from '@/db/properties';
+import { listProperties } from '@/db/properties';
 import { formatDisplayAddress } from '@/lib/address';
 import { useInstallPrompt } from '@/hooks/useInstallPrompt';
 import AddPropertyPanel from '@/components/AddPropertyPanel';
+import DeletePropertyDialog from '@/components/DeletePropertyDialog';
 import { ModeToggle } from '@/components/mode-toggle';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
@@ -18,12 +19,16 @@ export default function Home() {
   const { installable, install } = useInstallPrompt();
 
   const [importing, setImporting] = useState(false);
+  const [pendingDeleteId, setPendingDeleteId] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  async function handleDelete(id: string) {
-    if (!confirm('Deze locatie en alle bijbehorende leidingen verwijderen?')) return;
-    await deleteProperty(id);
-  }
+  const pendingDeleteProperty = useMemo(
+    () =>
+      pendingDeleteId
+        ? (properties?.find((p) => p.id === pendingDeleteId) ?? null)
+        : null,
+    [pendingDeleteId, properties],
+  );
 
   async function handleImportChange(e: ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
@@ -107,7 +112,7 @@ export default function Home() {
                       variant="ghost"
                       size="sm"
                       className="text-destructive hover:bg-destructive/10 hover:text-destructive"
-                      onClick={() => handleDelete(p.id)}
+                      onClick={() => setPendingDeleteId(p.id)}
                       aria-label={`${formatDisplayAddress(p)} verwijderen`}
                     >
                       Verwijderen
@@ -119,6 +124,16 @@ export default function Home() {
           </ul>
         )}
       </section>
+
+      {pendingDeleteProperty && (
+        <DeletePropertyDialog
+          property={pendingDeleteProperty}
+          open={pendingDeleteId !== null}
+          onOpenChange={(next) => {
+            if (!next) setPendingDeleteId(null);
+          }}
+        />
+      )}
     </main>
   );
 }
