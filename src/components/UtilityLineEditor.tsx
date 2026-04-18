@@ -8,6 +8,16 @@ import type { UtilityLinePatch } from '@/db/utilityLines';
 import { CASING_COLOR, UTILITY_META, UTILITY_TYPES } from '@/lib/utilityColors';
 import { formatMeters, pathLengthMeters } from '@/lib/distance';
 import { casingWidth } from '@/lib/lineWidth';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
 import { Button } from '@/components/ui/button';
 import {
   Dialog,
@@ -36,6 +46,12 @@ interface UtilityLineEditorProps {
   onSave: (patch: UtilityLinePatch) => void;
   onDelete: () => void;
   onEditGeometry: () => void;
+  /**
+   * v2.3.6 — user confirmed "Opnieuw GPS-en". Parent is expected to
+   * close the editor, switch to GPS walk mode with this line's id as
+   * the write-back target, and replace geometry on completion.
+   */
+  onReGps: () => void;
   onClose: () => void;
 }
 
@@ -44,6 +60,7 @@ export default function UtilityLineEditor({
   onSave,
   onDelete,
   onEditGeometry,
+  onReGps,
   onClose,
 }: UtilityLineEditorProps) {
   const [type, setType] = useState<UtilityType>(line.type);
@@ -53,6 +70,7 @@ export default function UtilityLineEditor({
   const [diameterMm, setDiameterMm] = useState(line.diameterMm?.toString() ?? '');
   const [installDate, setInstallDate] = useState(line.installDate?.slice(0, 10) ?? '');
   const [notes, setNotes] = useState(line.notes ?? '');
+  const [reGpsConfirmOpen, setReGpsConfirmOpen] = useState(false);
 
   function applyChanges() {
     onSave({
@@ -236,6 +254,13 @@ export default function UtilityLineEditor({
             Verwijderen
           </Button>
           <div className="flex flex-wrap gap-2">
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => setReGpsConfirmOpen(true)}
+            >
+              Opnieuw GPS-en
+            </Button>
             <Button type="button" variant="outline" onClick={onEditGeometry}>
               Punten bewerken
             </Button>
@@ -244,6 +269,36 @@ export default function UtilityLineEditor({
             </Button>
           </div>
         </DialogFooter>
+
+        <AlertDialog
+          open={reGpsConfirmOpen}
+          onOpenChange={setReGpsConfirmOpen}
+        >
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>Lijn opnieuw lopen?</AlertDialogTitle>
+              <AlertDialogDescription>
+                De huidige geometrie wordt vervangen door een nieuwe
+                GPS-wandeling. Attributen en foto&apos;s blijven
+                behouden.
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel>Annuleren</AlertDialogCancel>
+              <AlertDialogAction
+                onClick={() => {
+                  // Parent switches mode + targets this line id; close the
+                  // editor so the map is fully visible while walking.
+                  setReGpsConfirmOpen(false);
+                  onReGps();
+                  onClose();
+                }}
+              >
+                Start GPS
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
       </DialogContent>
     </Dialog>
   );

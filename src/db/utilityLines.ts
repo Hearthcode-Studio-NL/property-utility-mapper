@@ -44,6 +44,37 @@ export async function updateUtilityLine(id: UUID, patch: UtilityLinePatch): Prom
   await db.utilityLines.update(id, { ...patch, updatedAt: new Date().toISOString() });
 }
 
+export class LineNotFoundError extends Error {
+  constructor(id: UUID) {
+    super(`Leiding met id ${id} bestaat niet.`);
+    this.name = 'LineNotFoundError';
+  }
+}
+
+/**
+ * Replace the geometry of an existing line (v2.3.6 "Opnieuw GPS-en").
+ * Only `vertices` and `updatedAt` move — type, attributes, photos,
+ * thickness, notes, propertyId and createdAt all survive. Runs inside a
+ * Dexie transaction so a throw mid-step rolls the whole write back and
+ * the user's original geometry is preserved.
+ */
+export async function reGpsLine(
+  id: UUID,
+  vertices: [number, number][],
+): Promise<UtilityLine> {
+  return db.transaction('rw', db.utilityLines, async (): Promise<UtilityLine> => {
+    const existing = await db.utilityLines.get(id);
+    if (!existing) throw new LineNotFoundError(id);
+    const updated: UtilityLine = {
+      ...existing,
+      vertices,
+      updatedAt: new Date().toISOString(),
+    };
+    await db.utilityLines.put(updated);
+    return updated;
+  });
+}
+
 export async function deleteUtilityLine(id: UUID): Promise<void> {
   await db.transaction('rw', db.utilityLines, db.photos, async () => {
     await deletePhotosForLineTx(id);

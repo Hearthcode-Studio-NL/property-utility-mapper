@@ -9,6 +9,7 @@ import {
   addUtilityLine,
   deleteUtilityLine,
   listLinesForProperty,
+  reGpsLine,
   updateUtilityLine,
   type UtilityLinePatch,
 } from '../db/utilityLines';
@@ -56,6 +57,13 @@ export default function Property() {
   const [editingVertices, setEditingVertices] = useState<[number, number][]>([]);
   const [selectedVertexIndex, setSelectedVertexIndex] = useState<number | null>(null);
   const [measurePoints, setMeasurePoints] = useState<[number, number][]>([]);
+  /**
+   * v2.3.6 — when set, a GPS walk commits back to this existing line's
+   * geometry on completion instead of creating a new line. Cleared on
+   * success + on cancel. Default (null) keeps the original
+   * walk-creates-new-line behaviour intact.
+   */
+  const [reGpsTargetId, setReGpsTargetId] = useState<UUID | null>(null);
   const layerSelection = useLayerSelection();
   const [exporting, setExporting] = useState<ExportKind | null>(null);
   const [exportError, setExportError] = useState<string | null>(null);
@@ -102,28 +110,50 @@ export default function Property() {
 
   function startDraw() {
     resetDrafts();
+    setReGpsTargetId(null);
     setMode('drawing');
   }
 
   function startWalk() {
     resetDrafts();
+    setReGpsTargetId(null);
+    setMode('walking');
+  }
+
+  /**
+   * v2.3.6 — enter GPS walk mode with a target line id. On finish we'll
+   * replace that line's geometry via reGpsLine. `draftType` mirrors the
+   * line's type so the banner colour + preview markers match.
+   */
+  function startReGps(targetLine: UtilityLine) {
+    resetDrafts();
+    setDraftType(targetLine.type);
+    setReGpsTargetId(targetLine.id);
     setMode('walking');
   }
 
   function cancelDraft() {
     resetDrafts();
+    setReGpsTargetId(null);
     setMode('idle');
   }
 
   async function finishDraft() {
     if (draftVertices.length < 2) return;
-    await addUtilityLine({
-      propertyId,
-      type: draftType,
-      vertices: draftVertices,
-      thickness: draftThickness,
-    });
+    if (mode === 'walking' && reGpsTargetId !== null) {
+      // Re-GPS path: overwrite the target line's geometry. Every other
+      // field on the record is preserved by reGpsLine.
+      await reGpsLine(reGpsTargetId, draftVertices);
+    } else {
+      await addUtilityLine({
+        propertyId,
+        type: draftType,
+        vertices: draftVertices,
+        thickness: draftThickness,
+      });
+    }
     resetDrafts();
+    setReGpsTargetId(null);
     setMode('idle');
   }
 
@@ -263,7 +293,9 @@ export default function Property() {
     mode === 'drawing'
       ? `${UTILITY_META[draftType].label} tekenen — klik op de kaart`
       : mode === 'walking'
-        ? `${UTILITY_META[draftType].label} lopen — beweeg om punten vast te leggen`
+        ? reGpsTargetId !== null
+          ? `${UTILITY_META[draftType].label} opnieuw lopen — beweeg om punten vast te leggen`
+          : `${UTILITY_META[draftType].label} lopen — beweeg om punten vast te leggen`
         : mode === 'editing' && editingLineRecord
           ? `${UTILITY_META[editingLineRecord.type].label} bewerken — sleep punten of klik tussenpunten`
           : mode === 'measuring'
@@ -406,6 +438,7 @@ export default function Property() {
           onSave={saveLine}
           onDelete={handleDeleteLine}
           onEditGeometry={startEditGeometry}
+          onReGps={() => startReGps(editingLine)}
           onClose={() => setEditingLineId(null)}
         />
       )}
