@@ -1,15 +1,16 @@
 import { useMemo, useRef, useState, type ChangeEvent } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { useNavigate } from 'react-router-dom';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { MapPin } from 'lucide-react';
 import { toast } from 'sonner';
 
+import { db } from '@/db/dexie';
 import { listProperties } from '@/db/properties';
-import { formatDisplayAddress } from '@/lib/address';
 import { useInstallPrompt } from '@/hooks/useInstallPrompt';
 import AddPropertyPanel from '@/components/AddPropertyPanel';
 import DeletePropertyDialog from '@/components/DeletePropertyDialog';
 import DuplicatePropertyDialog from '@/components/DuplicatePropertyDialog';
+import PropertyTile from '@/components/PropertyTile';
 import { ModeToggle } from '@/components/mode-toggle';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
@@ -18,6 +19,26 @@ export default function Home() {
   const navigate = useNavigate();
   const properties = useLiveQuery(() => listProperties(), [], []);
   const { installable, install } = useInstallPrompt();
+
+  // Line counts per property in a single query — simpler than firing one
+  // count per tile. At the v1 scale (dozens to low hundreds of properties)
+  // pulling every row is cheap; if it ever gets slow we swap for a
+  // compound index or keep a denormalised count on Property.
+  const lineCountsByPropertyId = useLiveQuery<
+    Map<string, number>,
+    Map<string, number>
+  >(
+    async () => {
+      const all = await db.utilityLines.toArray();
+      const map = new Map<string, number>();
+      for (const l of all) {
+        map.set(l.propertyId, (map.get(l.propertyId) ?? 0) + 1);
+      }
+      return map;
+    },
+    [],
+    new Map(),
+  );
 
   const [importing, setImporting] = useState(false);
   const [pendingDeleteId, setPendingDeleteId] = useState<string | null>(null);
@@ -58,8 +79,20 @@ export default function Home() {
     }
   }
 
+  function scrollToAddPanel() {
+    // Empty-state CTA — the AddPropertyPanel is always mounted at the top
+    // of the page, so "Adres toevoegen" just puts it in view and tries to
+    // focus the first input. Graceful degradation if the input can't be
+    // found (e.g. the panel was restructured later).
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+    const firstInput = document.querySelector<HTMLInputElement>(
+      'input[data-add-property-focus]',
+    );
+    firstInput?.focus();
+  }
+
   return (
-    <main className="mx-auto max-w-2xl px-4 py-8">
+    <main className="mx-auto max-w-5xl px-4 py-8">
       <header className="mb-6 flex items-start justify-between gap-3">
         <div>
           <h1 className="text-3xl font-bold">Leidingen in kaart</h1>
@@ -103,41 +136,17 @@ export default function Home() {
         {properties === undefined ? (
           <p className="text-muted-foreground">Laden…</p>
         ) : properties.length === 0 ? (
-          <EmptyState />
+          <EmptyState onAdd={scrollToAddPanel} />
         ) : (
-          <ul className="flex flex-col gap-2">
+          <ul className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
             {properties.map((p) => (
               <li key={p.id}>
-                <Card>
-                  <CardContent className="flex items-center justify-between gap-3 p-3">
-                    <Link
-                      to={`/property/${p.id}`}
-                      className="flex-1 truncate hover:underline"
-                    >
-                      <span className="font-medium">{formatDisplayAddress(p)}</span>
-                      <span className="ml-2 text-xs text-muted-foreground">
-                        {p.centerLat.toFixed(5)}, {p.centerLng.toFixed(5)}
-                      </span>
-                    </Link>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => setPendingDuplicateId(p.id)}
-                      aria-label={`${formatDisplayAddress(p)} dupliceren`}
-                    >
-                      Dupliceer
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      className="text-destructive hover:bg-destructive/10 hover:text-destructive"
-                      onClick={() => setPendingDeleteId(p.id)}
-                      aria-label={`${formatDisplayAddress(p)} verwijderen`}
-                    >
-                      Verwijderen
-                    </Button>
-                  </CardContent>
-                </Card>
+                <PropertyTile
+                  property={p}
+                  lineCount={lineCountsByPropertyId.get(p.id) ?? 0}
+                  onDuplicate={() => setPendingDuplicateId(p.id)}
+                  onDelete={() => setPendingDeleteId(p.id)}
+                />
               </li>
             ))}
           </ul>
@@ -168,15 +177,19 @@ export default function Home() {
   );
 }
 
-function EmptyState() {
+function EmptyState({ onAdd }: { onAdd: () => void }) {
   return (
     <Card>
       <CardContent className="flex flex-col items-center justify-center gap-3 border border-dashed border-muted-foreground/40 bg-transparent p-8 text-center">
-        <MapPin className="h-10 w-10 text-muted-foreground" strokeWidth={1.5} />
-        <p className="text-sm">Nog geen locaties.</p>
-        <p className="text-xs text-muted-foreground">
-          Voeg hierboven een adres toe om te beginnen.
+        <MapPin
+          className="h-10 w-10 text-muted-foreground"
+          strokeWidth={1.5}
+          aria-hidden
+        />
+        <p className="text-base text-muted-foreground">
+          Je hebt nog geen adressen toegevoegd.
         </p>
+        <Button onClick={onAdd}>Adres toevoegen</Button>
       </CardContent>
     </Card>
   );

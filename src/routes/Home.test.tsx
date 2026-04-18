@@ -67,6 +67,28 @@ describe('Home', () => {
     vi.clearAllMocks();
   });
 
+  it('empty state shows an "Adres toevoegen" CTA that focuses the add-address input', async () => {
+    const user = userEvent.setup();
+    renderApp();
+
+    // Zero properties → empty state.
+    expect(
+      screen.getByText(/Je hebt nog geen adressen toegevoegd/i),
+    ).toBeInTheDocument();
+    const cta = screen.getByRole('button', { name: 'Adres toevoegen' });
+
+    // Pre-click: the AddPropertyPanel input is not focused.
+    const input = screen.getByPlaceholderText(
+      /Herengracht 1, Amsterdam/i,
+    ) as HTMLInputElement;
+    expect(input).not.toHaveFocus();
+
+    await user.click(cta);
+
+    // CTA scrolls to top AND focuses the address input.
+    expect(input).toHaveFocus();
+  });
+
   it('typed-address flow shows the confirmation card, saves, and navigates', async () => {
     vi.mocked(geocode.geocodeAddress).mockResolvedValue(STRUCTURED_HIT);
 
@@ -154,10 +176,14 @@ describe('Home', () => {
     const user = userEvent.setup();
     renderApp();
 
+    // Open the tile's three-dot menu, then "Verwijder…" from it.
     await user.click(
       await screen.findByRole('button', {
-        name: /Prinsengracht 263, Amsterdam verwijderen/i,
+        name: /Acties voor Prinsengracht 263, Amsterdam/i,
       }),
+    );
+    await user.click(
+      await screen.findByRole('menuitem', { name: /Verwijder…/ }),
     );
 
     // AlertDialog opens — confirm its Dutch copy is in place.
@@ -193,8 +219,11 @@ describe('Home', () => {
 
     await user.click(
       await screen.findByRole('button', {
-        name: /Singel 7, Amsterdam verwijderen/i,
+        name: /Acties voor Singel 7, Amsterdam/i,
       }),
+    );
+    await user.click(
+      await screen.findByRole('menuitem', { name: /Verwijder…/ }),
     );
     await user.click(screen.getByRole('button', { name: /^Verwijder$/ }));
 
@@ -247,8 +276,11 @@ describe('Home', () => {
 
     await user.click(
       await screen.findByRole('button', {
-        name: /Oudegracht 12, Utrecht dupliceren/i,
+        name: /Acties voor Oudegracht 12, Utrecht/i,
       }),
+    );
+    await user.click(
+      await screen.findByRole('menuitem', { name: /Dupliceer…/ }),
     );
 
     expect(
@@ -297,8 +329,11 @@ describe('Home', () => {
 
     await user.click(
       await screen.findByRole('button', {
-        name: /Singel 42, Amsterdam dupliceren/i,
+        name: /Acties voor Singel 42, Amsterdam/i,
       }),
+    );
+    await user.click(
+      await screen.findByRole('menuitem', { name: /Dupliceer…/ }),
     );
 
     const input = screen.getByLabelText<HTMLInputElement>('Adres');

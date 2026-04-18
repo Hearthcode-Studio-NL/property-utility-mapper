@@ -163,6 +163,7 @@ export default function AddPropertyPanel() {
                   disabled={busy}
                   required
                   className="flex-1"
+                  data-add-property-focus
                 />
                 <Button type="submit" disabled={busy || !query.trim()}>
                   {busy ? 'Zoeken…' : 'Zoeken'}
