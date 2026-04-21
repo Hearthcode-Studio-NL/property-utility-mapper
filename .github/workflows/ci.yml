@@ -1,0 +1,93 @@
+# property-utility-mapper — CI
+#
+# Implements the HearthCode Studio Testing Policy for this repo.
+# Reference: HearthCode-Vault/04-Standards/Testing-Policy.md
+#
+# Active waivers:
+#  - docs/adr/0001-testing-waiver-vite-plugin-pwa-audit.md
+#      → dependency audit runs with --omit=dev.
+#  - docs/adr/0002-testing-baseline-phase-2-gaps.md
+#      → smoke / E2E tests and automated a11y are not yet wired up;
+#        visual-regression and Lighthouse are waived for this internal
+#        tool. Target dates in the ADR.
+#
+# Two jobs run on every push + PR:
+#   fast      — lint, typecheck, unit/component tests. Target < 60s.
+#   security  — CodeQL + npm audit (scoped per ADR-0001).
+
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  # Cancel older runs when a new commit arrives on the same branch / PR.
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # ------------------------------------------------------------------
+  # FAST — runs on every push and PR. Should return feedback in < 60s.
+  # ------------------------------------------------------------------
+  fast:
+    name: Fast checks (lint + typecheck + test)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Lint (ESLint)
+        run: npm run lint
+
+      - name: Type-check (tsc)
+        run: npm run typecheck
+
+      - name: Unit + component tests (Vitest)
+        run: npm test
+
+  # ------------------------------------------------------------------
+  # SECURITY — CodeQL + dependency audit. Runs in parallel with fast.
+  # ------------------------------------------------------------------
+  security:
+    name: Security scans (CodeQL + audit)
+    runs-on: ubuntu-latest
+    permissions:
+      security-events: write
+      actions: read
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@v3
+        with:
+          languages: javascript-typescript
+
+      - name: Run CodeQL analysis
+        uses: github/codeql-action/analyze@v3
+        with:
+          category: "/language:javascript-typescript"
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      # Scoped to production deps per docs/adr/0001-testing-waiver-vite-plugin-pwa-audit.md.
+      # The full-tree audit surfaces the vite-plugin-pwa → workbox-build chain,
+      # which is patched via package.json overrides but still flagged on manifests.
+      # Revisit on or before 2026-10-21 (ADR expiry).
+      - name: Dependency audit (--omit=dev per ADR-0001)
+        run: npm audit --audit-level=high --omit=dev
