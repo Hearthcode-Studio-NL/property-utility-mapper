@@ -44,17 +44,12 @@ The specific advisories:
 
 ## Why
 
-Three compounding reasons:
+Two reasons, in order of importance:
 
-1. **The actual installed code is patched.** `package.json` includes an `overrides` entry that forces `serialize-javascript` to `^6.0.2` (a version without the advisories) across the entire dependency tree. Verified via `npm ls serialize-javascript`:
-   ```
-   └── vite-plugin-pwa@1.2.0
-       └── workbox-build@7.4.0
-           └── @rollup/plugin-terser@0.4.4
-               └── serialize-javascript@6.0.2   ← patched
-   ```
-2. **The advisory is flagged against manifests, not installed code.** `npm audit` reads the `package.json` of every transitive dependency. `vite-plugin-pwa`, `workbox-build`, and `@rollup/plugin-terser` still declare vulnerable version ranges in their manifests, so they are reported as "depends on vulnerable versions" even though the resolved installed version is safe. This is a documented quirk of `npm audit` interacting with `overrides`.
-3. **The blast radius is build-time, dev-only.** `serialize-javascript` is used during `npm run build` (PWA service-worker generation via Workbox). It does not execute in the user's browser. It does not execute on any server HearthCode operates. It only runs on the developer's laptop and in CI build runners — both trusted environments.
+1. **The blast radius is build-time, dev-only.** `serialize-javascript` runs during `npm run build` (PWA service-worker generation via Workbox). It does not execute in the user's browser. It does not execute on any server HearthCode operates. It only runs on the developer's laptop and in CI build runners — both trusted environments. An attacker would need to supply malicious input to the Workbox build step, which requires first compromising a trusted dependency (a much larger incident than these two advisories).
+2. **An earlier attempted patch made things worse.** A `package.json` `overrides` entry forcing `serialize-javascript@^6.0.2` was tried and removed — it caused npm to downgrade `vite-plugin-pwa` to `0.19.8`, which only supports Vite 3-5, breaking Vite 6 compatibility and failing `npm ci` with `ERESOLVE`. The safer path is to live with the advisory (scoped to dev) and wait for `workbox-build` to ship a fix upstream.
+
+**Production dependencies are clean.** The full `npm audit --audit-level=high` on production deps only (`--omit=dev`) reports **0 vulnerabilities**. Nothing a user of the app ever touches has a known high-severity issue.
 
 ## Risk and mitigation
 
@@ -65,10 +60,10 @@ Three compounding reasons:
 
 ### How the risk is reduced while the waiver is active
 
-- **The `overrides` entry pins the actual installed `serialize-javascript` to a patched version.** Both advisories are fixed at `serialize-javascript@6.0.2`. Installed code is not vulnerable.
-- **The override is enforced on every `npm install`** (via `package-lock.json`). Cannot silently regress.
 - **Build runs only on trusted hardware** — developer workstations and GitHub-hosted CI runners. No untrusted contributors can inject build input at HearthCode Studio's current scale.
-- **Production code is clean.** `npm audit --omit=dev` reports 0 vulnerabilities.
+- **Production code is clean.** `npm audit --omit=dev` reports 0 vulnerabilities — every runtime dependency passes.
+- **Dependabot alerts remain on** for the repo. If Workbox ships a fix before the waiver expires, the PR shows up automatically.
+- **The CI audit gate still runs** with `--omit=dev`, so if a *production* dep ever gets a high-severity advisory, CI fails loudly.
 
 ## Resolution plan
 
