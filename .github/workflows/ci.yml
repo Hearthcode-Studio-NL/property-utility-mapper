@@ -14,8 +14,7 @@
 # Jobs that run on every push + PR:
 #   fast      — lint, typecheck, unit/component tests. Target < 60s.
 #   audit     — dependency audit (scoped per ADR-0001).
-#   codeql    — static analysis (non-blocking: upload requires GitHub
-#               Advanced Security, which is paid for private repos).
+#   codeql    — static analysis (blocking: repo is public, so upload works).
 
 name: CI
 
@@ -80,19 +79,13 @@ jobs:
         run: npm audit --audit-level=high --omit=dev
 
   # ------------------------------------------------------------------
-  # CODEQL — static analysis. Upload requires GitHub Advanced Security,
-  # which is paid for private repos. If the upload fails (GHAS not
-  # enabled), the analysis still ran successfully — we continue on
-  # error so CI doesn't block on the GHAS entitlement.
-  #
-  # Enable Code scanning in Settings → Security → Code security when
-  # you're ready (requires GHAS for private repos, or make the repo
-  # public).
+  # CODEQL — static analysis. Blocking.
+  # Repo is public, so CodeQL upload works without GHAS. Findings
+  # appear in the Security tab; high-severity alerts block merges.
   # ------------------------------------------------------------------
   codeql:
     name: CodeQL static analysis
     runs-on: ubuntu-latest
-    continue-on-error: true
     permissions:
       security-events: write
       actions: read
