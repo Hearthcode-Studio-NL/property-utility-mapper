@@ -5,6 +5,7 @@
 - **Owner:** Wijnand (Hearthcode-Studio-NL)
 - **Expires:** 2026-07-21 (3 months — shorter than ADR-0001 because these are gaps *we* can close, not upstream blockers)
 - **Related PR:** first CI workflow commit on `main`
+- **Tracking issue:** [#1 — wire up Phase 2 accessibility setup](https://github.com/Hearthcode-Studio-NL/property-utility-mapper/issues/1) (target 2026-06-01)
 
 ---
 
